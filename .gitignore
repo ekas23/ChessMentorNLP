@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw_pgn/*.pgn
+data/annotated/*.csv
+data/annotated/*.parquet
+data/weakness_vectors/*.csv
+data/weakness_vectors/*.parquet
+.env
