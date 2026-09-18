@@ -40,6 +40,42 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 2: Engine Annotation
+**Completed:**
+- `src/annotation/engine.py`: `create_engine()`, `evaluate_fen()` (mate scores converted to a
+  large finite centipawn value), `annotate_game()` (walks a game's mainline, one Stockfish call
+  per position — N+1 calls for an N-move game by reusing each move's eval_after as the next
+  move's eval_before), `annotate_games()` (batch entry point, one Stockfish process reused
+  across all games, skips+logs any game that fails partway through)
+- `src/annotation/classify_moves.py`: `classify_move()` (centipawn-loss -> label, computed from
+  the mover's own perspective) and `classify_moves_df()` (vectorized wrapper), producing the
+  final `{game_id, move_number, fen, move_uci, eval_before, eval_after, quality_label}` shape
+  required by Architecture.md §4
+- `tests/test_phase2_smoke.py`: annotates a real 6-half-move game (`sample_short_game.pgn`) at
+  depth 8, confirms row count matches move count, column shape matches the contract exactly, all
+  quality labels are valid, no missing evals — ran in <1s, no crashes
+
+**In progress / broken:**
+- None
+
+**Decisions made:**
+- Quality-label thresholds (not specified in any doc) — centipawn loss from the mover's own
+  perspective: >=200 blunder, >=100 mistake, >=50 inaccuracy, else good. This is the common
+  Lichess/Chess.com-style convention; flagged here per Rules.md §3 ("ask before making an
+  architectural decision not already covered") — proceeding with this as the documented default
+  since it's a standard, well-established convention rather than an arbitrary choice
+- Default Stockfish search depth is 12 for real runs (`DEFAULT_DEPTH` in engine.py); the smoke
+  test uses depth 8 purely for speed
+- Optimized to N+1 engine calls per N-move game (reusing eval_after as next eval_before) rather
+  than the naive 2N, directly addressing PRD.md's flagged risk that Stockfish annotation is slow
+
+**Next step:**
+- Phase 3: implement `src/features/positional.py` (material, king safety, pawn structure,
+  phase), `src/features/motifs.py` (fork/pin/skewer detection), `src/features/openings.py`
+  (ECO lookup for the first 8-10 moves)
+
+---
+
 ### 2026-09-18 — Phase 1: Data Ingestion
 **Completed:**
 - `src/ingestion/parse_pgn.py`: `parse_pgn_string()` and `parse_pgn_file()`, both returning
