@@ -40,6 +40,45 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 1: Data Ingestion
+**Completed:**
+- `src/ingestion/parse_pgn.py`: `parse_pgn_string()` and `parse_pgn_file()`, both returning
+  `list[chess.pgn.Game]`. Validates each parsed game has at least one move (`_is_well_formed`);
+  malformed/empty games are logged and skipped, never halting the batch (per Rules.md §2)
+- `src/ingestion/fetch_games.py`: `fetch_chess_com_games()`, `fetch_lichess_games()`, and a
+  unified `fetch_games(username, source, max_games)` dispatcher. Chess.com path walks the
+  archive-list API newest-first; Lichess path uses the `max` query param on the user-games
+  endpoint. Every `requests` call is wrapped in try/except, logs a clear error, and returns
+  `[]` on failure rather than raising into the pipeline (per Rules.md §2)
+- `tests/test_phase1_smoke.py`: 4 checks, all passing — PGN-file parsing against a real
+  3-game fixture (`data/raw_pgn/sample_multi_game.pgn`, one deliberately empty game to confirm
+  skip-and-log), PGN-string parsing, and both API-fetch functions against mocked HTTP responses
+
+**In progress / broken:**
+- Live API calls to `api.chess.com` and `lichess.org` could not be verified in this sandboxed
+  session — its egress proxy returns 403 for both hosts (confirmed via direct `requests.get`
+  attempts). `fetch_chess_com_games`/`fetch_lichess_games` are implemented against each API's
+  real, documented response shape and verified via mocked `requests.get` responses, but have
+  **not** been exercised against the live APIs. Recommend running
+  `python3 -c "from src.ingestion.fetch_games import fetch_games; print(len(fetch_games('<your_username>', source='chess.com', max_games=5)))"`
+  locally (outside this sandbox) to confirm before relying on it for Phase 2+.
+
+**Decisions made:**
+- Chess.com archive walk stops as soon as `max_games` is reached, iterating archive months
+  newest-first then games within a month newest-first — avoids downloading a player's entire
+  history when only recent games are needed
+- A failed *individual* archive-month fetch is logged and skipped (partial results returned);
+  a failed *archive-list* fetch (the first call) returns `[]` for the whole pull, since there's
+  nothing to iterate without it
+
+**Next step:**
+- Phase 2: implement `src/annotation/engine.py` (Stockfish eval per move, before/after) and
+  `src/annotation/classify_moves.py` (eval swing → blunder/mistake/inaccuracy/good), producing
+  the per-move DataFrame per Architecture.md §4 (`{game_id, move_number, fen, move_uci,
+  eval_before, eval_after, quality_label}`)
+
+---
+
 ### 2026-09-18 — Phase 0: Environment Setup
 **Completed:**
 - Created the full folder structure from Architecture.md §3 (`data/{raw_pgn,annotated,weakness_vectors}`,
