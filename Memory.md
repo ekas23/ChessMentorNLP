@@ -40,6 +40,47 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 4: Weakness Modeling
+**Completed:**
+- `src/weakness/vectorize.py`: `build_weakness_vector()` (one game's move rows -> a dict of
+  rate-based weakness signals: blunder/mistake/inaccuracy rate, per-phase blunder rate,
+  pawn_weakness_rate, king_safety_avg, missed_tactic_rate, plus eco/opening_name) and
+  `vectorize_games()` (batch entry point, one row per game)
+- `src/weakness/aggregate.py`: `sort_chronologically()` (orders by parsed PGN Date header),
+  `add_rolling_trends()` (adds `_rolling` and `_ewm` columns per metric), and
+  `identify_persistent_weaknesses()` (flags a metric only if its EWM trend has stayed above
+  threshold for every one of the last `min_games` games — the transient-vs-persistent test
+  central to PRD.md)
+- LSTM stretch (`lstm_model.py`) intentionally not built yet — Phases.md marks it a stretch
+  goal, not required for "Done when"; revisit only if time remains after Phase 7
+- `tests/test_phase4_smoke.py`: (1) real annotate->feature->vectorize pipeline on a real game,
+  confirms vector shape/value ranges; (2) synthetic 8-game chronological timeline with a
+  deliberate sustained blunder-rate rise vs. a one-off mistake-rate spike — confirms
+  `identify_persistent_weaknesses` flags the sustained rise and correctly does NOT flag the
+  transient spike
+
+**In progress / broken:**
+- None (LSTM stretch deferred, not broken — see above)
+
+**Decisions made:**
+- `missed_tactic_rate` proxy: among positions where a fork/pin/skewer motif was geometrically
+  present for the mover, what fraction were played as blunder/mistake — returns 0.0 (not None)
+  when no motif-bearing positions occurred in that game
+- Trend threshold defaults (judgment calls, documented as constants in aggregate.py):
+  rolling window = 5 games, EWM span = 5 games, persistence requires >=3 games with EWM rate
+  above 0.15 — chosen so a single bad game never triggers "persistent", but a real sustained
+  rise (as in the smoke test) is reliably caught within a handful of games
+  EWM is treated as the primary trend signal (used by identify_persistent_weaknesses) since it
+  weights recent games more without needing a hard cutoff; rolling mean is kept alongside as a
+  simpler, more literal reference series for the report/chart layer
+
+**Next step:**
+- Phase 5: implement `src/nlp/templates.py` (deterministic move-to-text templating) and
+  `src/nlp/report_generator.py` (LLM-based coaching report from the weakness vector + trend
+  data)
+
+---
+
 ### 2026-09-18 — Phase 3: Feature Extraction
 **Completed:**
 - `src/features/positional.py`: `material_balance()`, `king_safety()` (pawn-shield-minus-open-files
