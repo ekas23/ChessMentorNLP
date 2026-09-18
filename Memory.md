@@ -40,6 +40,61 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 7: Integration & Polish (PROJECT COMPLETE through Phases 0-7)
+**Completed:**
+- `src/main.py`: `run_pipeline()` orchestrates ingestion -> annotation -> features -> weakness
+  -> NLP -> recommendation end to end, returning `{text_report, report_source, training_plan,
+  games_analyzed, persistent_weaknesses, ranked_weaknesses}` (matches Architecture.md §4's final
+  Recommendation->Output contract, extended with run metadata). `main()` is an `argparse` CLI
+  (`--username`/`--pgn-file` mutually exclusive, `--source`, `--max-games`, `--depth`) — no web
+  framework used, per Rules.md
+- Added a full pytest suite under `tests/` with one file per module (`test_ingestion.py`,
+  `test_annotation.py`, `test_features.py`, `test_weakness.py`, `test_nlp.py`,
+  `test_recommend.py`, `test_main.py`, plus `conftest.py`) — 41 tests, all passing. Kept the six
+  `test_phaseN_smoke.py` narrative scripts from Phases 0-6 as executable walkthroughs (still all
+  passing); the pytest suite is the more granular per-module coverage Phase 7 asks for
+  specifically
+- `test_main.py::test_cli_runs_as_a_single_command` runs `python -m src.main --pgn-file ...` as
+  an actual subprocess — the literal "one command in, full report + training plan out, no manual
+  steps" done-when criterion — confirmed passing, output contains both the coaching report and
+  the training plan
+- Added `pytest>=7.0.0` to `requirements.txt` (dev/test dependency)
+
+**In progress / broken:**
+- Two things remain unverified against live external services in this sandboxed session,
+  both already flagged in their originating phase's entry above and both fully implemented
+  against the real, documented API shape: (1) live Chess.com/Lichess API pulls (Phase 1;
+  network blocked here, verified via mocks) and (2) the live Anthropic LLM report path (Phase 5;
+  no `ANTHROPIC_API_KEY` in this environment, verified via its documented template fallback).
+  Recommend both be exercised locally before treating the project as fully proven end-to-end
+  with live services
+- `src/weakness/lstm_model.py` (Phase 4's stretch goal) was not built — Phases.md marks it
+  optional and it was correctly not required for any phase's done-when criterion
+- Optional/stretch Phase 7 web view was not built — Design.md's visual system was applied
+  instead to this text-based CLI report's structure (hero-style title, summary stats, narrative,
+  training-plan cards map onto Design.md §4's sections); a styled HTML/web report is a natural
+  follow-up if desired, but Rules.md keeps this CLI/notebook-first unless explicitly asked
+
+**Decisions made:**
+- Used `pytest` (a standard, non-web, non-DB testing tool) for the per-module suite required by
+  Phase 7 — does not conflict with any Rules.md "avoid" item
+- Kept both test styles: the pytest suite (fast, granular, CI-friendly) and the original
+  `test_phaseN_smoke.py` scripts (narrative, print real output for human inspection) — the
+  latter were valuable during development for literally seeing the pipeline's output at each
+  stage and are cheap to keep
+
+**Next step:**
+- Project is functionally complete through all required (non-stretch) phases. If continuing:
+  (1) verify live Chess.com/Lichess pulls and the live LLM report path locally with real
+  credentials/network, (2) consider the Phase 4 LSTM stretch goal or a Design.md-styled HTML
+  report as follow-on polish, (3) run the full pipeline against a real player's multi-month game
+  history to validate PRD.md's success criterion of "at least 3 distinct, correctly-identified
+  recurring weaknesses" (needs >=3 games of real history — `identify_persistent_weaknesses`
+  requires `min_games=3` by design, so a single-game smoke test correctly reports zero
+  "persistent" weaknesses even though `ranked_weaknesses` still surfaces relative severity)
+
+---
+
 ### 2026-09-18 — Phase 6: Recommendation Engine
 **Completed:**
 - `src/recommend/recommender.py`: `recommend_for_weakness()` (metric -> training_type,
