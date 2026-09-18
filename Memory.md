@@ -40,6 +40,53 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 5: NLP Report Generation
+**Completed:**
+- `src/weakness/aggregate.py`: added `rank_weakness_tags()` (persistent weaknesses first by
+  latest EWM value, then remaining tracked metrics) — the ranked weakness-tag list required by
+  Architecture.md §4's NLP->Recommendation contract, computed in the weakness layer (it already
+  has the trend data) and forwarded through NLP to Recommendation
+- `src/nlp/templates.py`: `move_to_text()` (Phase 5A deterministic per-move sentence),
+  `weakness_summary_sentence()`, and `template_report()` — the deterministic baseline report,
+  always available with zero external dependencies
+- `src/nlp/report_generator.py`: `build_report_prompt()` (grounds the LLM strictly in the
+  pipeline's own computed numbers — no invented stats) and `generate_coaching_report()`, which
+  calls the Anthropic Messages API directly via `requests` when `ANTHROPIC_API_KEY` is set, and
+  falls back to `templates.template_report()` on a missing key or any call failure, always
+  returning `{text_report, source}`
+- `tests/test_phase5_smoke.py`: verifies `move_to_text()` on a synthetic row; verifies
+  `template_report()` produces a real multi-paragraph, coherent report (not just stats) from a
+  synthetic 8-game timeline with a genuine persistent blunder-rate weakness; verifies
+  `build_report_prompt()` is correctly grounded; verifies `generate_coaching_report()` returns a
+  valid multi-paragraph report via its fallback path
+
+**In progress / broken:**
+- `ANTHROPIC_API_KEY` is not set in this sandboxed session, so the LLM path
+  (`source == 'llm'`) has **not** been exercised against the real API here — only its
+  documented fallback (`source == 'template_fallback'`) has been verified. The LLM call code
+  itself (`_call_anthropic_api`) is fully implemented against the real Anthropic Messages API
+  shape. Recommend setting `ANTHROPIC_API_KEY` and re-running
+  `python3 tests/test_phase5_smoke.py` locally to confirm `source == 'llm'` and inspect real
+  model output before treating Phase 5B as fully proven end-to-end.
+
+**Decisions made:**
+- Used `requests` directly against the Anthropic Messages API rather than adding the
+  `anthropic` SDK package as a new dependency, per Rules.md's constraint on introducing new
+  NLP/LLM dependencies without justification — `requests` is already a project dependency
+- LLM path failure (any exception, including missing API key) always falls back to
+  `template_report()` rather than raising — per Rules.md §2 (one external call must never crash
+  the pipeline) and Phases.md's own sanctioned cut order (LLM falls back to templates, never to
+  nothing)
+- The prompt explicitly instructs the model to use only the given data and never invent
+  statistics/opening names, keeping the "grounded NLP framework" claim in PRD.md defensible
+  even when the LLM path is live
+
+**Next step:**
+- Phase 6: implement `src/recommend/recommender.py` (ranked weakness tags -> Lichess puzzle
+  themes / opening study / endgame drill suggestions)
+
+---
+
 ### 2026-09-18 — Phase 4: Weakness Modeling
 **Completed:**
 - `src/weakness/vectorize.py`: `build_weakness_vector()` (one game's move rows -> a dict of

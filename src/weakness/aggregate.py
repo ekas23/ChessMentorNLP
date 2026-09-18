@@ -90,3 +90,36 @@ def identify_persistent_weaknesses(
         if (recent_values > threshold).all():
             persistent.append(metric)
     return persistent
+
+
+def rank_weakness_tags(
+    trend_df: pd.DataFrame, persistent_weaknesses: list[str] | None = None
+) -> list[str]:
+    """Input shape: trend_df (output of add_rolling_trends(), chronologically sorted),
+    persistent_weaknesses optional list[str] (output of identify_persistent_weaknesses();
+    computed with default thresholds if omitted).
+    Output shape: list[str] of metric names, most severe first.
+
+    Purpose: the ranked weakness-tag list required by Architecture.md §4's
+    NLP->Recommendation contract. Persistent weaknesses are ranked first (by their
+    most recent EWM value, highest first), followed by any other tracked metrics
+    also ranked by most recent EWM value — so a report/recommendation always has a
+    full ranking to draw on, not just the (possibly empty) persistent subset.
+    """
+    if trend_df.empty:
+        return []
+    if persistent_weaknesses is None:
+        persistent_weaknesses = identify_persistent_weaknesses(trend_df)
+
+    latest = trend_df.iloc[-1]
+
+    def latest_ewm(metric: str) -> float:
+        col = f"{metric}_ewm"
+        return latest[col] if col in trend_df.columns else 0.0
+
+    persistent_sorted = sorted(persistent_weaknesses, key=latest_ewm, reverse=True)
+    remaining = [
+        m for m in TREND_METRICS if m not in persistent_weaknesses and f"{m}_ewm" in trend_df.columns
+    ]
+    remaining_sorted = sorted(remaining, key=latest_ewm, reverse=True)
+    return persistent_sorted + remaining_sorted
