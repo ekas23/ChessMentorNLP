@@ -40,6 +40,52 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 3: Feature Extraction
+**Completed:**
+- `src/features/positional.py`: `material_balance()`, `king_safety()` (pawn-shield-minus-open-files
+  heuristic), `pawn_structure()` (isolated/doubled/normal), `game_phase()` (opening/middlegame/
+  endgame), plus `add_positional_columns(df)` wrapper
+- `src/features/motifs.py`: `detect_fork()`, `detect_pin()` (via python-chess's `is_pinned`),
+  `detect_skewer()` (manual ray-walk, front-piece-value >= back-piece-value along a slider's
+  line), `detect_motifs()`, plus `add_motif_column(df)` wrapper — scoped to exactly these 3
+  motifs per PRD.md's brittleness warning
+- `src/features/openings.py`: `classify_eco()` (longest-prefix match against a small, verified
+  table of standard opening families and their real ECO ranges — no fabricated names/codes) and
+  `add_opening_columns(df, games, game_ids)`
+- Renamed `engine._derive_game_id` -> public `engine.derive_game_id()` so openings.py can join
+  per-game opening tags back onto the per-move DataFrame using the same ids annotate_games() used
+- `tests/test_phase3_smoke.py`: verifies `detect_fork()` against a known textbook forking
+  position (independent of engine output); runs the full annotate -> positional -> motif ->
+  opening pipeline on the Ruy Lopez sample game — confirms all 38 rows have complete features,
+  motif tags include real detections (skewer/pin fire on genuine positions in the sample game),
+  and the opening is correctly classified as Ruy Lopez (C60-C99)
+
+**In progress / broken:**
+- None
+
+**Decisions made:**
+- `motif` column is a comma-joined string (`""` if none, e.g. `"fork,pin"`) rather than a list,
+  so it stays a clean scalar DataFrame column
+- Extended the Features->Weakness contract beyond Architecture.md §4's listed 5 fields
+  (material_balance, king_safety, pawn_structure, phase, motif) by also adding `eco` and
+  `opening_name` columns, since Phases.md explicitly requires `openings.py` output and the
+  contract's own §5 rationale says each layer just needs to extend the prior schema, not match
+  it exactly — noting this explicitly per Rules.md §4 rather than doing it silently
+- `pawn_structure()` scoped to isolated/doubled only (no backward-pawn detection) — same
+  brittleness-avoidance judgment call as the motif scoping
+- `game_phase()` and `king_safety()` thresholds are heuristic judgment calls (documented as
+  constants with inline rationale in positional.py) since no doc specifies exact values
+- `openings.py`'s ECO table covers only major opening families at the super-group level (e.g.
+  "Ruy Lopez" C60-C99, not a specific sub-variation) — deliberately coarse to avoid
+  misclassifying/fabricating a precise ECO code from a small hand-curated table
+
+**Next step:**
+- Phase 4: implement `src/weakness/vectorize.py` (per-game weakness vector from the
+  annotated+featured data) and `src/weakness/aggregate.py` (rolling/EWM longitudinal trend
+  tracking across chronological games)
+
+---
+
 ### 2026-09-18 — Phase 2: Engine Annotation
 **Completed:**
 - `src/annotation/engine.py`: `create_engine()`, `evaluate_fen()` (mate scores converted to a

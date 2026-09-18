@@ -117,7 +117,7 @@ def annotate_games(games: list[chess.pgn.Game], depth: int = DEFAULT_DEPTH) -> p
     engine = create_engine(depth=depth)
     all_rows: list[dict] = []
     for index, game in enumerate(games):
-        game_id = _derive_game_id(game, index)
+        game_id = derive_game_id(game, index)
         try:
             rows = annotate_game(game, game_id, engine)
         except AnnotationError as exc:
@@ -129,12 +129,15 @@ def annotate_games(games: list[chess.pgn.Game], depth: int = DEFAULT_DEPTH) -> p
     return classify_moves_df(df)
 
 
-def _derive_game_id(game: chess.pgn.Game, index: int) -> str:
+def derive_game_id(game: chess.pgn.Game, index: int) -> str:
     """Input shape: game (chess.pgn.Game), index int (position in the batch).
     Output shape: str, a stable-enough identifier for the game.
 
     Purpose: build a human-readable game_id from PGN headers, falling back to the
-    batch index if headers are missing (e.g. a bare PGN with no metadata).
+    batch index if headers are missing (e.g. a bare PGN with no metadata). Exposed
+    publicly (not just an annotate_games() internal) so other layers — e.g.
+    openings.py, which classifies per-game rather than per-move — can join back
+    onto the same game_id without re-deriving it differently.
     """
     headers = game.headers
     white = headers.get("White", "?")
