@@ -40,6 +40,40 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-18 — Phase 6: Recommendation Engine
+**Completed:**
+- `src/recommend/recommender.py`: `recommend_for_weakness()` (metric -> training_type,
+  Lichess puzzle theme slugs, training links, description) and `build_training_plan()`
+  (ranked weakness tags -> list of concrete recommendations, in severity order). Covers all
+  weakness-vector metrics: blunder/mistake/inaccuracy/missed_tactic rate -> real Lichess puzzle
+  theme links (`fork`, `pin`, `skewer`, `hangingPiece`, `advantage`, `middlegame`, `endgame`,
+  `pawnEndgame`, `rookEndgame` — all verified real Lichess training theme slugs, no fabricated
+  themes); pawn_weakness_rate and opening_blunder_rate get study-note-style recommendations
+  since pawn structure isn't itself a Lichess puzzle theme
+- `tests/test_phase6_smoke.py`: verifies a single weakness maps to valid `lichess.org/training/`
+  links; verifies a full ranked weakness list (from the same synthetic persistent-weakness
+  timeline used in Phases 4-5) produces one recommendation per weakness, every one with a
+  non-empty description and either a concrete link or an explicit study-note type
+
+**In progress / broken:**
+- None
+
+**Decisions made:**
+- Any weakness metric without a curated entry falls back to a generic 'advantage' puzzle
+  recommendation rather than returning nothing, so `build_training_plan()` can never silently
+  drop a weakness the report named
+- `pawn_weakness_rate` is intentionally NOT mapped to a Lichess puzzle theme (no matching real
+  theme exists) — mapped to `training_type: 'opening_study'` with a text recommendation instead,
+  rather than inventing a nonexistent puzzle theme slug
+
+**Next step:**
+- Phase 7: wire `src/main.py` to orchestrate the full pipeline end-to-end (ingestion ->
+  annotation -> features -> weakness -> NLP -> recommendation), add basic per-module tests under
+  `tests/`, and confirm one command takes a username in and produces a full report + training
+  plan out with no manual steps in between
+
+---
+
 ### 2026-09-18 — Phase 5: NLP Report Generation
 **Completed:**
 - `src/weakness/aggregate.py`: added `rank_weakness_tags()` (persistent weaknesses first by
