@@ -40,6 +40,69 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-21 — Post-Phase-7: Local Web Dashboard (explicit user request, deviates from Rules.md)
+**Completed:**
+- `src/webapp/app.py`: a Flask app with two routes — `GET /` (upload form) and
+  `POST /analyze` (accepts an uploaded PGN, saves it to a temp file, calls
+  `main.run_pipeline(pgn_file=..., username=player_name, depth=...)`, deletes the temp
+  file, renders the result). No new pipeline logic — the dashboard is a thin view over
+  the exact same `run_pipeline()` the CLI uses, so the two can't drift apart
+  - Extended `main.run_pipeline()`'s return dict with a new `timeline` key (per-game
+    trend rows as `list[dict]`, via `trend_df.to_dict(orient="records")`) — additive
+    only, no existing keys changed, needed for the dashboard's table/chart
+  - `_build_trend_chart()` turns the timeline into plain SVG polyline coordinates
+    (no JS charting library) — returns `None` if fewer than 2 games, so the page
+    correctly shows "not enough games yet" instead of an empty/broken chart
+- `src/webapp/templates/{base,index,report}.html`: styled per Design.md — dark hero
+  section, saffron/green accents, Playfair Display headings, DM Sans body, DM Mono for
+  all numeric/data values, training-plan cards color-coded by whether a weakness is
+  "persistent"
+- `tests/test_webapp.py`: 5 tests via Flask's test client — index loads, missing-file
+  and invalid-PGN error paths both show a clear message (not a stack trace), a real PGN
+  upload renders the coaching report + training plan, a multi-game PGN renders an actual
+  trend-line chart. Also manually verified by running the real dev server
+  (`python -m src.webapp.app`) and hitting it with `curl`, including a real file upload
+  producing a full styled HTML report (confirmed 200 OK, correct content, correct
+  fallbacks) — full suite (51 tests total including this file) passes
+
+**In progress / broken:**
+- None. Not manually verified in an actual browser (this sandbox has no GUI browser)
+  — verified via `curl`/Flask test client instead, which covers the same HTTP
+  request/response path a browser would use, but you should still open
+  `http://127.0.0.1:5000` yourself locally to eyeball the styling
+
+**Decisions made:**
+- **This deviates from Rules.md's "do not add a web framework (Flask/Django/FastAPI)
+  unless Phases.md explicitly reaches a 'build the UI' phase."** No such phase was
+  reached — Phase 7's web view was explicitly optional/stretch and was not built as
+  part of Phases 0-7. The user then explicitly asked for a local-only dashboard with
+  file upload, which is a direct instruction overriding that default constraint for
+  this one addition. Recording it here per Rules.md §3's own instruction to document
+  (not silently make) any decision that deviates from the project docs. Architecture.md
+  §3 was updated to list the new `src/webapp/` folder and explain why it's there
+- Chose Flask over FastAPI/Django: smallest, most standard choice for a single-purpose
+  local dashboard with no auth/API/database — nothing else in the stack needed
+- Chart is hand-built inline SVG rather than a JS charting library (matplotlib, Chart.js,
+  etc.) — keeps the dashboard dependency-free beyond Flask itself and avoids adding
+  another new dependency for one line chart
+- Kept it explicitly single-user/local-only: binds to `127.0.0.1` (not `0.0.0.0`), no
+  auth, no database, no session/multi-user state — consistent with PRD.md's non-goals
+  even though a web framework is now present
+- Default analysis depth in the dashboard is 10 (vs. the CLI's 12) and clamped to
+  [4, 18] via the form — favors a responsive browser request/response cycle over the
+  CLI's slightly higher-accuracy default
+
+**Next step:**
+- Have the user run `python -m src.webapp.app` locally and open
+  `http://127.0.0.1:5000` in a real browser to confirm the styling reads correctly and
+  upload their own real PGN files
+- If they want the dashboard to also support pulling by username (not just file
+  upload), that's a small addition to `index.html`/`app.py` reusing
+  `run_pipeline(username=..., source=...)`, not yet built since the request was
+  specifically "upload any game pgn"
+
+---
+
 ### 2026-09-18 — Phase 7: Integration & Polish (PROJECT COMPLETE through Phases 0-7)
 **Completed:**
 - `src/main.py`: `run_pipeline()` orchestrates ingestion -> annotation -> features -> weakness

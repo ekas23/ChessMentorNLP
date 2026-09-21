@@ -76,6 +76,11 @@ chessmentor_nlp/
 │   ├── recommend/
 │   │   └── recommender.py      # weakness tag → puzzle/training mapping
 │   │
+│   ├── webapp/                 # local-only Flask dashboard (explicit user request,
+│   │   ├── app.py              # deviates from the default no-web-framework rule --
+│   │   ├── templates/          # see Rules.md and Memory.md for why; reuses
+│   │   └── static/             # main.run_pipeline() rather than duplicating logic)
+│   │
 │   └── main.py                 # orchestrates the full pipeline end-to-end
 │
 ├── notebooks/

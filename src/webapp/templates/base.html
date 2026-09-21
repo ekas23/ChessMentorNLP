@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}ChessMentorNLP{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --hero-bg: #1C1C1C;
+    --saffron: #FF9933;
+    --green: #138808;
+    --body-bg: #FAFAF8;
+    --body-text: #1C1C1C;
+    --muted: #6B6B6B;
+    --warning: #C0392B;
+    --card-bg: #FFFFFF;
+    --border: #E5E3DD;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--body-bg);
+    color: var(--body-text);
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+  }
+  h1, h2, h3 { font-family: 'Playfair Display', Georgia, serif; margin: 0 0 0.5em; }
+  code, .mono, .data-value { font-family: 'DM Mono', 'SFMono-Regular', monospace; }
+
+  .hero {
+    background: var(--hero-bg);
+    color: #FAFAF8;
+    padding: 48px 24px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 2.2rem; }
+  .hero p { color: #C9C9C4; margin: 4px 0; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  .summary-strip {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 24px;
+  }
+  .stat {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,153,51,0.4);
+    border-radius: 10px;
+    padding: 12px 20px;
+    min-width: 150px;
+  }
+  .stat .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #C9C9C4; }
+  .stat .value { font-family: 'DM Mono', monospace; font-size: 1.3rem; color: var(--saffron); }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .narrative p, .narrative-block { white-space: pre-wrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
+
+  .rec-card {
+    border-left: 4px solid var(--saffron);
+    background: #FFF8F0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+  }
+  .rec-card.persistent { border-left-color: var(--warning); background: #FCEFED; }
+  .rec-card h3 { font-family: 'DM Sans', sans-serif; font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+  .rec-card a { color: var(--green); text-decoration: none; font-family: 'DM Mono', monospace; font-size: 0.85rem; }
+  .rec-card a:hover { text-decoration: underline; }
+  .rec-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; }
+
+  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--green); color: white; margin-left: 8px; }
+
+  form label { display: block; margin: 16px 0 6px; font-weight: 500; }
+  input[type="file"], input[type="text"], input[type="number"] {
+    width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif;
+  }
+  button {
+    margin-top: 24px;
+    background: var(--saffron);
+    color: #1C1C1C;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  .error { background: #FCEFED; color: var(--warning); border: 1px solid var(--warning); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+  .footer-note { color: var(--muted); font-size: 0.8rem; text-align: center; margin-top: 24px; }
+  a.back-link { color: var(--green); font-family: 'DM Sans', sans-serif; text-decoration: none; }
+  svg text { font-family: 'DM Mono', monospace; fill: var(--muted); font-size: 10px; }
+</style>
+</head>
+<body>
+{% block body %}{% endblock %}
+</body>
+</html>

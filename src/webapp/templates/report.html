@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Coaching Report — {{ player_name }}{% endblock %}
+{% block body %}
+<div class="hero">
+  <h1>Coaching Report</h1>
+  <p>{{ player_name }} &middot; {{ result.games_analyzed }} game{{ 's' if result.games_analyzed != 1 else '' }} analyzed</p>
+
+  <div class="summary-strip">
+    <div class="stat">
+      <div class="label">Games Analyzed</div>
+      <div class="value">{{ result.games_analyzed }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Top Weakness</div>
+      <div class="value">{{ result.ranked_weaknesses[0] if result.ranked_weaknesses else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Persistent Weaknesses</div>
+      <div class="value">{{ result.persistent_weaknesses|length }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Report Source</div>
+      <div class="value">{{ "AI-generated" if result.report_source == "llm" else "Template" }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <a class="back-link" href="/">&larr; Analyze another game</a>
+
+  <div class="card narrative" style="margin-top: 24px;">
+    <h2>Coaching Narrative</h2>
+    <div class="narrative-block">{{ result.text_report }}</div>
+  </div>
+
+  {% if chart %}
+  <div class="card">
+    <h2>Blunder-Rate Trend</h2>
+    <p style="color: var(--muted); font-size: 0.9rem;">
+      Exponentially weighted blunder rate across games in chronological order —
+      a rising line means the weakness is persistent, not a one-off.
+    </p>
+    <svg width="100%" viewBox="0 0 {{ chart_width }} {{ chart_height }}" preserveAspectRatio="xMidYMid meet">
+      <rect x="0" y="0" width="{{ chart_width }}" height="{{ chart_height }}" fill="#FAFAF8" />
+      <polyline points="{{ chart.points }}" fill="none" stroke="#FF9933" stroke-width="2.5" />
+      {% for label in chart.labels %}
+        <text x="{{ 24 + loop.index0 * (chart_width - 48) / (chart.labels|length - 1 if chart.labels|length > 1 else 1) }}" y="{{ chart_height - 4 }}">{{ label }}</text>
+      {% endfor %}
+    </svg>
+  </div>
+  {% else %}
+  <div class="card">
+    <h2>Blunder-Rate Trend</h2>
+    <p style="color: var(--muted);">Not enough games yet to draw a trend line (need at least 2).</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Per-Game Weakness Vector</h2>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Game</th>
+            <th>Date</th>
+            <th>Blunder %</th>
+            <th>Mistake %</th>
+            <th>Inaccuracy %</th>
+            <th>Opening</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.timeline %}
+          <tr>
+            <td class="data-value">{{ loop.index }}</td>
+            <td class="data-value">{{ row.date or "—" }}</td>
+            <td class="data-value">{{ "%.0f"|format((row.blunder_rate or 0) * 100) }}%</td>
+            <td class="data-value">{{ "%.0f"|format((row.mistake_rate or 0) * 100) }}%</td>
+            <td class="data-value">{{ "%.0f"|format((row.inaccuracy_rate or 0) * 100) }}%</td>
+            <td>{{ row.opening_name or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Training Plan</h2>
+    {% if result.training_plan %}
+      {% for item in result.training_plan %}
+      <div class="rec-card {{ 'persistent' if item.weakness in result.persistent_weaknesses else '' }}">
+        <h3>
+          {{ item.weakness.replace('_', ' ')|title }}
+          {% if item.weakness in result.persistent_weaknesses %}<span class="badge">persistent</span>{% endif %}
+        </h3>
+        <p>{{ item.description }}</p>
+        {% if item.training_links %}
+        <div class="rec-links">
+          {% for link in item.training_links %}
+            <a href="{{ link }}" target="_blank" rel="noopener">{{ link }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p style="color: var(--muted);">No specific weaknesses identified yet — analyze more games for a training plan.</p>
+    {% endif %}
+  </div>
+
+  <p class="footer-note">
+    Generated locally by ChessMentorNLP. Report source: {{ result.report_source }}.
+  </p>
+</div>
+{% endblock %}

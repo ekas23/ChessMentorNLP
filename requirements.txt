@@ -4,5 +4,9 @@ pandas>=2.0.0
 numpy>=1.24.0
 requests>=2.31.0
 
+# local web dashboard (explicit user request; see Memory.md and Architecture.md
+# for why this deviates from Rules.md's default no-web-framework constraint)
+flask>=3.0.0
+
 # dev/test
 pytest>=7.0.0

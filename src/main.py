@@ -88,6 +88,9 @@ def run_pipeline(
         "games_analyzed": len(trend_df),
         "persistent_weaknesses": persistent,
         "ranked_weaknesses": ranked_tags,
+        # Per-game rows (date, rates, trend columns), added for the webapp dashboard's
+        # timeline chart/table -- an additive extension, existing keys are unchanged.
+        "timeline": trend_df.to_dict(orient="records"),
     }
 
 
