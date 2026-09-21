@@ -40,6 +40,88 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-22 — Phase 5/6 Enhancement: Personalized Training Plan with Game Examples
+**Completed:**
+- **Data-model check (done first, per the change request's explicit instruction):** the
+  per-move annotated DataFrame already retains `fen` (position before the move) and
+  `move_uci` (the move actually played) from Phase 2, and `motif`/`pawn_structure`/`phase`
+  from Phase 3 — enough to derive a real SAN move string and a real centipawn swing for
+  narration. What it did NOT retain was *which* square/piece a detected motif applies to:
+  `detect_fork`/`detect_pin`/`detect_skewer` returned booleans only, so a sentence like "a
+  fork on f5" could not have been written truthfully from existing data. Flagging this
+  explicitly (as instructed) rather than fabricating it: fixed with a small, additive Phase 3
+  extension — `features/motifs.py` gained `_fork_detail()`/`_pin_detail()`/`_skewer_detail()`
+  (shared by the existing boolean detectors, so detection and detail can never disagree) and
+  `describe_motifs()`, producing a real plain-language clause (e.g. "a knight fork on f5
+  attacking the opponent's queen and rook") derived purely from the same FEN already stored —
+  no new data collection, no new Stockfish calls, no external API. New `motif_detail` column
+  added via `add_motif_column()` (additive, existing `motif` column unchanged)
+- `annotation/classify_moves.py`: extracted `mover_loss_cp()` from `classify_move()` (same
+  calculation, now reusable) so instance narration and move classification share one
+  centipawn-swing calculation rather than risking two that drift apart
+- New `src/nlp/instances.py`: `filter_moves_for_metric()` (mirrors vectorize.py's exact
+  per-metric definitions, so an "instance" always genuinely contributes to the stat being
+  shown), `select_instances()` (picks up to 4, preferring motif-detail-bearing and
+  blunder-sized rows as "clearest to explain" per the request, one per distinct game in a
+  first pass so 4 examples means 4 different games, not one bad game), and
+  `build_instances_by_weakness()` (the entry point — only builds instances for weaknesses
+  already in the `persistent_weaknesses` list passed in; does NOT recompute persistence)
+- `recommend/recommender.py`: `match_puzzle_for_instance()` — matches a specific instance's
+  own motif tag to a real Lichess theme (fork-miss -> fork puzzles) rather than only the
+  weakness category; falls back to blunder/phase/generic themes when no motif is present,
+  silently (no UI caveat), per the request. `pawn_weakness_rate` instances get no puzzle link
+  (same reasoning as the existing category-level decision: no real Lichess theme covers pawn
+  structure). `build_training_plan()`'s first parameter is now explicitly
+  `persistent_weaknesses` (not the full ranked list) — a card is only built for a persistent
+  weakness, per the request's explicit "do not generate a card for every weakness category."
+  Each card gained an `instances` list, each instance carrying its own `puzzle_links`
+- `nlp/templates.py` (`template_report`) and `nlp/report_generator.py` (`build_report_prompt`,
+  `generate_coaching_report`) extended with an optional `instances_by_weakness` parameter so
+  the narrative — template fallback AND the LLM prompt — references concrete games/moves
+  ("in Game 12, move 18...") instead of only aggregate rates, satisfying the request's
+  "extend its input... so the generated narrative can reference them concretely." The LLM
+  prompt explicitly lists the real instances as data and instructs the model to reference at
+  least one by game/move number, never to invent additional ones
+- `main.py`: wired `build_instances_by_weakness(moves_df, trend_df, persistent)` in after
+  trend computation, passed into both `generate_coaching_report()` and `build_training_plan()`
+  (which now receives `persistent`, not `ranked_tags`). CLI (`_print_result`) and the webapp
+  (`report.html`) both updated to render the required structure: weakness name + persistent
+  badge, summary sentence, "Recurring instances:" list with game/move number, explanation, and
+  a "Similar puzzle" link per instance
+- Tests: new `tests/test_instances.py` (11 tests — filtering, spread-across-games, capping at
+  4, motif-detail preference, SAN rendering, centipawn-swing wording), new motif-detail tests
+  in `test_features.py` (fork/pin/skewer wording, including a regression test that target
+  pieces are correctly attributed to "the opponent's", not "your own" — caught and fixed a
+  real wording bug during development), new `match_puzzle_for_instance`/persistent-only tests
+  in `test_recommend.py`, new instance-aware tests in `test_nlp.py`, and a full end-to-end
+  integration test in `test_main.py` using a real game repeated 3x (to guarantee a genuine
+  persistent pattern) confirming the whole chain produces instance-backed cards with working
+  puzzle links. All 97 tests passing (up from 69)
+
+**In progress / broken:**
+- None
+
+**Decisions made:**
+- Fixed the fork/pin/skewer target-piece wording bug caught while testing: `describe_motifs()`
+  initially said "your rook and your king" for fork targets, but motif detection runs from the
+  mover's own perspective, so targets belong to the *opponent* — corrected to "the opponent's
+  rook and king" before this shipped, per Rules.md's ban on fabricating/misattributing chess facts
+- `select_instances()`'s "clear and explainable" preference is a 3-tier heuristic (motif-detail
+  present > blunder-sized loss with no motif > mistake/inaccuracy with no motif), a judgment
+  call since the request didn't specify an exact scoring method — documented here rather than
+  left implicit
+- Kept `template_report()`/`build_report_prompt()`/`generate_coaching_report()` backward
+  compatible (`instances_by_weakness` defaults to `None`) rather than making it required,
+  since existing callers/tests without instance data should still produce a valid report
+- No "view all N instances" link was added (per the request's own fallback instruction) since
+  no such detail-view surface exists in this project — capped at 4 silently
+
+**Next step:**
+- None outstanding for this change; ready for the user to try locally against a real,
+  multi-game Chess.com history to see genuinely distinct (non-duplicated) example instances
+
+---
+
 ### 2026-09-21 — Deliberate Scope Change: Remove PGN Upload, Single-Input Ingestion
 **Completed:**
 - Removed the PGN-upload input path entirely from the product surface (CLI and web

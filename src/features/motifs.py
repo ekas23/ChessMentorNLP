@@ -23,12 +23,14 @@ _ROOK_DIRECTIONS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 _BISHOP_DIRECTIONS = [(1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 
-def detect_fork(board: chess.Board) -> bool:
+def _fork_detail(board: chess.Board) -> dict | None:
     """Input shape: chess.Board.
-    Output shape: bool.
+    Output shape: dict {attacker_square, attacker_piece_type, target_squares: list[Square],
+    target_piece_types: list[PieceType]} for the first qualifying fork found, or None.
 
-    Purpose: True if the side to move has any single piece simultaneously
-    attacking 2+ enemy non-pawn pieces (a fork).
+    Purpose: shared detection+detail logic for detect_fork() and describe_motifs() —
+    computed once, in one place, so the boolean check and the human-readable
+    description can never drift apart or disagree about what was found.
     """
     attacker_color = board.turn
     defender_color = not attacker_color
@@ -36,16 +38,44 @@ def detect_fork(board: chess.Board) -> bool:
         if piece.color != attacker_color:
             continue
         attacked_squares = board.attacks(square)
-        valuable_targets = [
+        targets = [
             sq
             for sq in attacked_squares
             if (target := board.piece_at(sq)) is not None
             and target.color == defender_color
             and target.piece_type != chess.PAWN
         ]
-        if len(valuable_targets) >= 2:
-            return True
-    return False
+        if len(targets) >= 2:
+            return {
+                "attacker_square": square,
+                "attacker_piece_type": piece.piece_type,
+                "target_squares": targets,
+                "target_piece_types": [board.piece_at(sq).piece_type for sq in targets],
+            }
+    return None
+
+
+def detect_fork(board: chess.Board) -> bool:
+    """Input shape: chess.Board.
+    Output shape: bool.
+
+    Purpose: True if the side to move has any single piece simultaneously
+    attacking 2+ enemy non-pawn pieces (a fork).
+    """
+    return _fork_detail(board) is not None
+
+
+def _pin_detail(board: chess.Board) -> dict | None:
+    """Input shape: chess.Board.
+    Output shape: dict {pinned_square, pinned_piece_type} for the first pinned piece
+    found, or None. See _fork_detail() for why detection and detail share one function.
+    """
+    defender_color = not board.turn
+    for square, piece in board.piece_map().items():
+        if piece.color == defender_color and piece.piece_type != chess.KING:
+            if board.is_pinned(defender_color, square):
+                return {"pinned_square": square, "pinned_piece_type": piece.piece_type}
+    return None
 
 
 def detect_pin(board: chess.Board) -> bool:
@@ -56,23 +86,14 @@ def detect_pin(board: chess.Board) -> bool:
     absolutely pinned to its own king (python-chess's is_pinned, which accounts
     for the full board regardless of whose turn it is).
     """
-    defender_color = not board.turn
-    for square, piece in board.piece_map().items():
-        if piece.color == defender_color and piece.piece_type != chess.KING:
-            if board.is_pinned(defender_color, square):
-                return True
-    return False
+    return _pin_detail(board) is not None
 
 
-def detect_skewer(board: chess.Board) -> bool:
+def _skewer_detail(board: chess.Board) -> dict | None:
     """Input shape: chess.Board.
-    Output shape: bool.
-
-    Purpose: True if a sliding piece (rook/bishop/queen) belonging to the side
-    to move has a clear ray onto two enemy pieces in a line, where the nearer
-    ("front") piece is worth at least as much as the farther ("back") one —
-    the classic skewer pattern (attacking the front piece threatens to win the
-    back piece once the front piece moves or is captured).
+    Output shape: dict {front_square, front_piece_type, back_square, back_piece_type}
+    for the first qualifying skewer found, or None. See _fork_detail() for why
+    detection and detail share one function.
     """
     attacker_color = board.turn
     defender_color = not attacker_color
@@ -89,12 +110,30 @@ def detect_skewer(board: chess.Board) -> bool:
             ][:2]
             if len(occupied) < 2:
                 continue
-            (_, front), (_, back) = occupied
+            (front_sq, front), (back_sq, back) = occupied
             if front.color != defender_color or back.color != defender_color:
                 continue
             if _SKEWER_VALUES[front.piece_type] >= _SKEWER_VALUES[back.piece_type]:
-                return True
-    return False
+                return {
+                    "front_square": front_sq,
+                    "front_piece_type": front.piece_type,
+                    "back_square": back_sq,
+                    "back_piece_type": back.piece_type,
+                }
+    return None
+
+
+def detect_skewer(board: chess.Board) -> bool:
+    """Input shape: chess.Board.
+    Output shape: bool.
+
+    Purpose: True if a sliding piece (rook/bishop/queen) belonging to the side
+    to move has a clear ray onto two enemy pieces in a line, where the nearer
+    ("front") piece is worth at least as much as the farther ("back") one —
+    the classic skewer pattern (attacking the front piece threatens to win the
+    back piece once the front piece moves or is captured).
+    """
+    return _skewer_detail(board) is not None
 
 
 def detect_motifs(board: chess.Board) -> list[str]:
@@ -114,19 +153,76 @@ def detect_motifs(board: chess.Board) -> list[str]:
     return motifs
 
 
+def describe_motifs(board: chess.Board) -> str:
+    """Input shape: chess.Board.
+    Output shape: str, a short plain-language clause naming the specific piece(s)/
+    square(s) involved in the most prominent motif present (priority fork > pin >
+    skewer, matching detect_motifs()'s order), or "" if none detected.
+
+    Purpose: give the NLP layer's per-instance narration (nlp/instances.py) a
+    concrete, non-fabricated detail to reference -- e.g. "a knight fork on f5
+    attacking your queen and rook" -- derived purely from the same board analysis
+    detect_motifs() already performs, never invented. This is the answer to the
+    2026-09-22 change request's question of whether the data model retains enough
+    detail to narrate "what was missed": detect_fork/pin/skewer originally returned
+    only booleans, which was NOT enough for concrete narration -- this function
+    (and the _*_detail() helpers above) is the small, additive Phase 3 extension
+    flagged in Memory.md rather than silently fabricating position specifics.
+    """
+    # NOTE: detect_fork/pin/skewer all run from the side-to-move's (the mover's) own
+    # perspective -- the pieces involved as *targets* (fork targets, the pinned piece,
+    # the skewered pair) belong to the opponent (the side NOT to move), since these
+    # functions detect a tactical opportunity the mover had available against the
+    # opponent. Wording below says "the opponent's" for target pieces accordingly --
+    # saying "your" here would misattribute the pieces to the wrong side.
+    fork = _fork_detail(board)
+    if fork is not None:
+        attacker_name = chess.piece_name(fork["attacker_piece_type"])
+        target_names = [chess.piece_name(pt) for pt in fork["target_piece_types"]]
+        targets_text = " and ".join(f"the opponent's {name}" for name in target_names)
+        return (
+            f"a {attacker_name} fork on {chess.square_name(fork['attacker_square'])} "
+            f"attacking {targets_text}"
+        )
+
+    pin = _pin_detail(board)
+    if pin is not None:
+        pinned_name = chess.piece_name(pin["pinned_piece_type"])
+        return f"a pin on the opponent's {pinned_name} on {chess.square_name(pin['pinned_square'])}"
+
+    skewer = _skewer_detail(board)
+    if skewer is not None:
+        front_name = chess.piece_name(skewer["front_piece_type"])
+        back_name = chess.piece_name(skewer["back_piece_type"])
+        return (
+            f"a skewer hitting the opponent's {front_name} on "
+            f"{chess.square_name(skewer['front_square'])}, with their {back_name} on "
+            f"{chess.square_name(skewer['back_square'])} behind it"
+        )
+
+    return ""
+
+
 def add_motif_column(df: pd.DataFrame) -> pd.DataFrame:
     """Input shape: pd.DataFrame with at least a {fen} column.
-    Output shape: copy of df with a new 'motif' column — a comma-joined string of
-    detected tags (e.g. 'fork,pin'), or '' if none detected for that position.
+    Output shape: copy of df with two new columns: 'motif' (comma-joined tags, e.g.
+    'fork,pin', or '' if none) and 'motif_detail' (a short plain-language clause
+    naming the specific piece(s)/square(s) for the primary motif, or '' if none —
+    see describe_motifs()).
 
-    Purpose: row-wise wrapper applying detect_motifs() across the annotated-moves
-    DataFrame.
+    Purpose: row-wise wrapper computing both the tag and its human-readable detail
+    from one board per row (single fen->Board parse), so callers needing the
+    instance-narration detail don't have to re-parse every FEN a second time.
     """
     df = df.copy()
     if df.empty:
         df["motif"] = pd.Series(dtype="object")
+        df["motif_detail"] = pd.Series(dtype="object")
         return df
-    df["motif"] = df["fen"].apply(lambda fen: ",".join(detect_motifs(chess.Board(fen))))
+
+    boards = df["fen"].apply(chess.Board)
+    df["motif"] = boards.apply(lambda b: ",".join(detect_motifs(b)))
+    df["motif_detail"] = boards.apply(describe_motifs)
     return df
 
 

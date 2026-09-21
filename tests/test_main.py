@@ -39,6 +39,28 @@ def test_pipeline_core_end_to_end_on_real_games():
         assert item["training_links"] or item["training_type"] == "opening_study"
 
 
+def test_persistent_weaknesses_get_instance_backed_training_cards():
+    """2026-09-22 change request: only persistent weaknesses get a training-plan
+    card, and each such card carries concrete per-instance examples with their
+    own matched puzzle links -- not just a category description. Uses the same
+    real game 3x (as 3 distinct chronological "games") so the same real mistakes
+    repeat, guaranteeing a genuine persistent pattern to verify against.
+    """
+    game = parse_pgn_file(str(RAW_PGN_DIR / "sample_game.pgn"))[0]
+    result = _run_pipeline_on_games([game, game, game], player_name="Tester", depth=SMOKE_TEST_DEPTH)
+
+    assert result["training_plan"], "Expected at least one persistent weakness with this repeated game"
+    for item in result["training_plan"]:
+        assert item["weakness"] in result["persistent_weaknesses"]
+        assert "instances" in item
+        assert len(item["instances"]) <= 4
+        for instance in item["instances"]:
+            assert instance["game_number"] >= 1
+            assert instance["move_number"] >= 1
+            assert instance["explanation"].strip() != ""
+            assert isinstance(instance["puzzle_links"], list)
+
+
 def test_run_pipeline_fetches_from_chess_com_and_reports_coverage(tmp_path):
     """Mocks the Chess.com API (archives + one month) to return a real PGN fixture's
     content, confirming run_pipeline()'s live path wires fetch_last_n_games straight

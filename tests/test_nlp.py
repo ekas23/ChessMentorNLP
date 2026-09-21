@@ -56,3 +56,41 @@ def test_generate_coaching_report_falls_back_without_key(monkeypatch):
     result = generate_coaching_report(_trend_df(), ["blunder_rate"], "Alice")
     assert result["source"] == "template_fallback"
     assert result["text_report"].strip() != ""
+
+
+def _instances_by_weakness():
+    return {
+        "blunder_rate": [
+            {
+                "game_id": "g1", "game_number": 1, "move_number": 12,
+                "quality_label": "blunder", "motif": "fork", "phase": "middlegame",
+                "explanation": "Nf5 was a blunder during the middlegame, costing about 250 centipawns of evaluation.",
+            }
+        ]
+    }
+
+
+def test_template_report_references_concrete_instance_when_given():
+    report = template_report(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
+    assert "Game 1" in report
+    assert "move 12" in report
+
+
+def test_template_report_unaffected_without_instances():
+    # Backward-compatible: omitting instances_by_weakness still produces a full report.
+    report = template_report(_trend_df(), ["blunder_rate"], "Alice")
+    assert "Alice" in report
+    assert len([p for p in report.split("\n\n") if p.strip()]) >= 3
+
+
+def test_build_report_prompt_includes_instance_data_and_instructs_grounding():
+    prompt = build_report_prompt(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
+    assert "Game 1" in prompt
+    assert "move 12" in prompt
+    assert "do not invent" in prompt.lower()
+
+
+def test_generate_coaching_report_passes_instances_to_fallback(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    result = generate_coaching_report(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
+    assert "Game 1" in result["text_report"]

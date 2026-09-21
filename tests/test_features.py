@@ -2,7 +2,7 @@
 
 import chess
 
-from src.features.motifs import detect_fork, detect_motifs, detect_pin
+from src.features.motifs import add_motif_column, describe_motifs, detect_fork, detect_motifs, detect_pin, detect_skewer
 from src.features.openings import classify_eco
 from src.features.positional import game_phase, king_safety, material_balance, pawn_structure
 from src.ingestion.parse_pgn import parse_pgn_string
@@ -79,3 +79,41 @@ def test_classify_eco_unknown_returns_none():
     eco = classify_eco(game)
     assert eco["eco"] is None
     assert eco["name"] == "Unknown/Irregular Opening"
+
+
+def test_describe_motifs_fork_names_opponents_pieces():
+    board = chess.Board("2r3k1/4Np1p/6p1/8/8/8/8/6K1 w - - 0 1")
+    description = describe_motifs(board)
+    assert "fork on e7" in description
+    assert "opponent's" in description  # targets belong to the defender, not the mover
+    assert "your" not in description
+
+
+def test_describe_motifs_pin_names_opponents_piece():
+    board = chess.Board("4k3/8/8/4n3/8/8/8/4RK2 w - - 0 1")
+    description = describe_motifs(board)
+    assert "pin" in description
+    assert "opponent's knight" in description
+
+
+def test_describe_motifs_skewer_names_both_pieces():
+    board = chess.Board("q7/8/8/k7/8/8/8/R6K w - - 0 1")
+    assert detect_skewer(board) is True
+    description = describe_motifs(board)
+    assert "skewer" in description
+    assert "king" in description and "queen" in description
+
+
+def test_describe_motifs_empty_when_no_motif():
+    assert describe_motifs(chess.Board()) == ""
+
+
+def test_add_motif_column_includes_motif_detail():
+    board = chess.Board("2r3k1/4Np1p/6p1/8/8/8/8/6K1 w - - 0 1")
+    import pandas as pd
+
+    df = pd.DataFrame({"fen": [board.fen(), chess.Board().fen()]})
+    df = add_motif_column(df)
+    assert "motif_detail" in df.columns
+    assert df.iloc[0]["motif_detail"] != ""
+    assert df.iloc[1]["motif_detail"] == ""

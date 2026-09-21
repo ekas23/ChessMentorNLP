@@ -18,6 +18,24 @@ INACCURACY_THRESHOLD_CP = 50
 QUALITY_LABELS = ["blunder", "mistake", "inaccuracy", "good"]
 
 
+def mover_loss_cp(fen_before: str, eval_before: float, eval_after: float) -> float:
+    """Input shape: fen_before str (position before the move, used only to determine
+    which side moved, via its side-to-move field), eval_before/eval_after floats
+    (centipawns, White's perspective, as produced by engine.evaluate_fen).
+    Output shape: float, centipawn evaluation swing from the mover's own perspective
+    (positive = the position got worse for the player who made the move).
+
+    Purpose: shared "how much did this move cost, from the mover's point of view"
+    calculation, used by classify_move() to pick a quality label and by
+    nlp.instances' narration (2026-09-22 change request) to state a concrete
+    swing size for a specific instance -- one calculation, not two that could drift.
+    """
+    mover_is_white = fen_before.split(" ")[1] == "w"
+    before_for_mover = eval_before if mover_is_white else -eval_before
+    after_for_mover = eval_after if mover_is_white else -eval_after
+    return before_for_mover - after_for_mover
+
+
 def classify_move(fen_before: str, eval_before: float, eval_after: float) -> str:
     """Input shape: fen_before str (position before the move, used only to determine
     which side moved, via its side-to-move field), eval_before/eval_after floats
@@ -28,10 +46,7 @@ def classify_move(fen_before: str, eval_before: float, eval_after: float) -> str
     the perspective of the player who made the move (so a move that worsens
     Black's position is scored the same way a move that worsens White's is).
     """
-    mover_is_white = fen_before.split(" ")[1] == "w"
-    before_for_mover = eval_before if mover_is_white else -eval_before
-    after_for_mover = eval_after if mover_is_white else -eval_after
-    loss = before_for_mover - after_for_mover
+    loss = mover_loss_cp(fen_before, eval_before, eval_after)
 
     if loss >= BLUNDER_THRESHOLD_CP:
         return "blunder"

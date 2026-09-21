@@ -69,6 +69,42 @@ _WEAKNESS_RECOMMENDATIONS: dict[str, dict] = {
 }
 
 
+def match_puzzle_for_instance(instance: dict) -> list[str]:
+    """Input shape: instance dict (one entry from nlp.instances.select_instances --
+    has 'motif', 'quality_label', 'phase' keys).
+    Output shape: list[str], real "https://lichess.org/training/{theme}" links
+    matching that specific instance as closely as possible.
+
+    Purpose: per-instance puzzle matching (2026-09-22 change request) — match by
+    the instance's own exact motif when one was detected (fork-miss -> fork
+    puzzles, not a generic tactics link), falling back to the weakness category
+    only when no specific motif is present on that move. Per the request: "if a
+    specific instance's exact motif can't be matched... fall back to the closest
+    available theme... just use the closest match silently" -- no UI caveat is
+    shown, this function just picks the best available theme.
+    """
+    if instance.get("metric") == "pawn_weakness_rate":
+        # Same reasoning as pawn_weakness_rate's category-level recommendation:
+        # no real Lichess puzzle theme covers pawn structure, so no puzzle link
+        # is attached (a study-note recommendation, not a mismatched puzzle).
+        return []
+
+    motif_tags = [tag for tag in (instance.get("motif") or "").split(",") if tag]
+    if motif_tags:
+        # All three motif names (fork/pin/skewer) are themselves real Lichess theme
+        # slugs, so an exact motif tag maps directly with no translation needed.
+        return [LICHESS_TRAINING_URL.format(theme=tag) for tag in motif_tags]
+
+    if instance.get("quality_label") == "blunder":
+        return [LICHESS_TRAINING_URL.format(theme="hangingPiece")]
+
+    phase = instance.get("phase")
+    if phase in ("opening", "middlegame", "endgame"):
+        return [LICHESS_TRAINING_URL.format(theme=phase)]
+
+    return [LICHESS_TRAINING_URL.format(theme="advantage")]
+
+
 def recommend_for_weakness(metric: str, context: dict | None = None) -> dict:
     """Input shape: metric str (a weakness-vector metric name, e.g. 'blunder_rate'),
     context dict | None (optional extra info, e.g. {'opening_name': 'Ruy Lopez'} to
@@ -106,22 +142,44 @@ def recommend_for_weakness(metric: str, context: dict | None = None) -> dict:
 
 
 def build_training_plan(
-    ranked_weakness_tags: list[str], vector_df: pd.DataFrame | None = None, top_n: int = 5
+    persistent_weaknesses: list[str],
+    vector_df: pd.DataFrame | None = None,
+    instances_by_weakness: dict[str, list[dict]] | None = None,
+    top_n: int = 5,
 ) -> list[dict]:
-    """Input shape: ranked_weakness_tags list[str] (from weakness.aggregate.rank_weakness_tags,
-    most severe first), vector_df optional pd.DataFrame (used only to personalize a
-    recommendation, e.g. naming the player's actual opening), top_n int (cap on how many
-    weaknesses get a recommendation).
-    Output shape: list[dict], one recommend_for_weakness() entry per weakness tag, in the
-    same (severity) order.
+    """Input shape: persistent_weaknesses list[str] (from
+    weakness.aggregate.identify_persistent_weaknesses, most severe first --
+    NOT the full ranked list; per the 2026-09-22 change request, a training-plan
+    card is only built for weaknesses already flagged persistent, one-off
+    weaknesses get no card), vector_df optional pd.DataFrame (used only to
+    personalize a recommendation, e.g. naming the player's actual opening),
+    instances_by_weakness optional dict[str, list[dict]] (from
+    nlp.instances.build_instances_by_weakness — concrete per-move examples for
+    each weakness), top_n int (cap on how many weaknesses get a card).
+    Output shape: list[dict], one recommend_for_weakness() entry per persistent
+    weakness, each with an added 'instances' key: a list of {..., the original
+    instance fields, 'puzzle_links': list[str]} — one matched puzzle set per
+    instance, not just the card's generic category-level links.
 
-    Purpose: the Phase 6 entry point — turns the NLP layer's ranked weakness tags into the
-    final training_plan half of Architecture.md §4's Recommendation->Output contract
-    ({text_report, training_plan}). Guarantees every weakness the report names gets at
-    least one concrete training link (Phases.md Phase 6 done-when criterion).
+    Purpose: the Phase 6 entry point — turns the NLP layer's persistent weakness
+    tags (plus their concrete per-move instances) into the final training_plan
+    half of Architecture.md §4's Recommendation->Output contract ({text_report,
+    training_plan}). Guarantees every weakness the report names gets at least one
+    concrete training link (Phases.md Phase 6 done-when criterion), now backed by
+    real, personalized examples rather than only a category description.
     """
     context = {}
     if vector_df is not None and not vector_df.empty:
         context["opening_name"] = vector_df.iloc[-1].get("opening_name")
+    instances_by_weakness = instances_by_weakness or {}
 
-    return [recommend_for_weakness(metric, context) for metric in ranked_weakness_tags[:top_n]]
+    plan = []
+    for metric in persistent_weaknesses[:top_n]:
+        item = recommend_for_weakness(metric, context)
+        instances = instances_by_weakness.get(metric, [])
+        item["instances"] = [
+            {**instance, "puzzle_links": match_puzzle_for_instance(instance)}
+            for instance in instances
+        ]
+        plan.append(item)
+    return plan

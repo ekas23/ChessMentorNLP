@@ -51,15 +51,25 @@ def weakness_summary_sentence(metric: str, value: float) -> str:
     return f"Across recent games, {percent}% of moves involved {label}."
 
 
-def template_report(vector_df: pd.DataFrame, ranked_weakness_tags: list[str], player_name: str) -> str:
+def template_report(
+    vector_df: pd.DataFrame,
+    ranked_weakness_tags: list[str],
+    player_name: str,
+    instances_by_weakness: dict[str, list[dict]] | None = None,
+) -> str:
     """Input shape: vector_df (trend-augmented weakness-vector DataFrame, chronologically
     sorted), ranked_weakness_tags list[str] (from weakness.aggregate.rank_weakness_tags),
-    player_name str.
+    player_name str, instances_by_weakness optional dict[str, list[dict]] (from
+    nlp.instances.build_instances_by_weakness -- concrete per-move examples for each
+    *persistent* weakness only; 2026-09-22 change request).
     Output shape: str, a deterministic multi-paragraph coaching report.
 
     Purpose: the Phase 5A baseline report, and the guaranteed fallback for Phase 5B —
     always produces a coherent, non-empty report from the computed data alone, with
-    no external dependency.
+    no external dependency. When instance data is available, the report now
+    references concrete moments ("Game 12, move 18...") instead of only aggregate
+    rates, per the change request's requirement that the narrative "reference them
+    concretely."
     """
     games_analyzed = len(vector_df)
     intro = (
@@ -81,9 +91,28 @@ def template_report(vector_df: pd.DataFrame, ranked_weakness_tags: list[str], pl
             f"- {s}" for s in sentences
         )
 
+    examples_paragraph = ""
+    if instances_by_weakness:
+        example_lines = []
+        for metric, instances in instances_by_weakness.items():
+            if not instances:
+                continue
+            example = instances[0]
+            label = _METRIC_LABELS.get(metric, metric)
+            example_lines.append(
+                f"- {label.capitalize()}: in Game {example['game_number']}, move "
+                f"{example['move_number']}, {example['explanation']}"
+            )
+        if example_lines:
+            examples_paragraph = (
+                "\n\nA few concrete moments this shows up in your own games:\n"
+                + "\n".join(example_lines)
+                + "\n\nThe full training plan below has more examples and matching puzzles for each."
+            )
+
     closing = (
         "These patterns were identified by tracking rate-based weakness signals across your "
         "game history with an exponentially weighted trend, which favors recent games while "
         "still smoothing out any single unusually good or bad performance."
     )
-    return f"{intro}\n\n{body}\n\n{closing}"
+    return f"{intro}\n\n{body}{examples_paragraph}\n\n{closing}"

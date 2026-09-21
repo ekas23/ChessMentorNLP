@@ -92,12 +92,16 @@
 
   <div class="card">
     <h2>Training Plan</h2>
+    <p style="color: var(--muted); font-size: 0.9rem;">
+      Only recurring (persistent) weaknesses get a card here — a one-off bad game
+      doesn't get flagged as a pattern.
+    </p>
     {% if result.training_plan %}
       {% for item in result.training_plan %}
-      <div class="rec-card {{ 'persistent' if item.weakness in result.persistent_weaknesses else '' }}">
+      <div class="rec-card persistent">
         <h3>
           {{ item.weakness.replace('_', ' ')|title }}
-          {% if item.weakness in result.persistent_weaknesses %}<span class="badge">persistent</span>{% endif %}
+          <span class="badge">persistent</span>
         </h3>
         <p>{{ item.description }}</p>
         {% if item.training_links %}
@@ -107,10 +111,30 @@
           {% endfor %}
         </div>
         {% endif %}
+
+        {% if item.instances %}
+        <div class="instances">
+          <p style="font-weight: 500; margin: 14px 0 6px;">Recurring instances:</p>
+          <ul style="margin: 0; padding-left: 20px;">
+            {% for instance in item.instances %}
+            <li style="margin-bottom: 10px;">
+              <span class="mono">Game {{ instance.game_number }}, move {{ instance.move_number }}</span>
+              — {{ instance.explanation }}
+              {% if instance.puzzle_links %}
+              <br>
+              {% for puzzle_link in instance.puzzle_links %}
+                <a href="{{ puzzle_link }}" target="_blank" rel="noopener" style="font-size: 0.8rem;">&rarr; Similar puzzle: {{ puzzle_link }}</a>{% if not loop.last %}<br>{% endif %}
+              {% endfor %}
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     {% else %}
-      <p style="color: var(--muted);">No specific weaknesses identified yet — analyze more games for a training plan.</p>
+      <p style="color: var(--muted);">No persistent weaknesses identified yet — analyze more games for a training plan.</p>
     {% endif %}
   </div>
 

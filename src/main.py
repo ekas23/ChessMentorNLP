@@ -24,6 +24,7 @@ from src.ingestion.fetch_games import (
     ChessComUsernameNotFoundError,
     fetch_last_n_games,
 )
+from src.nlp.instances import build_instances_by_weakness
 from src.nlp.report_generator import generate_coaching_report
 from src.recommend.recommender import build_training_plan
 from src.weakness.aggregate import (
@@ -97,8 +98,13 @@ def _run_pipeline_on_games(
     persistent = identify_persistent_weaknesses(trend_df)
     ranked_tags = rank_weakness_tags(trend_df, persistent)
 
-    report = generate_coaching_report(trend_df, ranked_tags, player_name)
-    training_plan = build_training_plan(ranked_tags, trend_df)
+    # Concrete per-move examples for each PERSISTENT weakness only (2026-09-22 change
+    # request) -- built from moves_df, the per-move annotated+featured data, which
+    # already carries everything needed (fen, move_uci, motif_detail, quality_label).
+    instances_by_weakness = build_instances_by_weakness(moves_df, trend_df, persistent)
+
+    report = generate_coaching_report(trend_df, ranked_tags, player_name, instances_by_weakness)
+    training_plan = build_training_plan(persistent, trend_df, instances_by_weakness)
 
     return {
         "text_report": report["text_report"],
@@ -129,12 +135,20 @@ def _print_result(result: dict) -> None:
         f"\n(report generated via: {result['report_source']}, "
         f"{result['games_analyzed']} games analyzed{coverage_note})\n"
     )
-    print("Training Plan:")
+    print("Training Plan (persistent weaknesses only):")
+    if not result["training_plan"]:
+        print("  No persistent weaknesses identified yet -- analyze more games to build a plan.")
     for item in result["training_plan"]:
-        print(f"\n[{item['weakness']}] ({item['training_type']})")
+        print(f"\n[{item['weakness']}] ({item['training_type']}) -- persistent")
         print(f"  {item['description']}")
         for link in item["training_links"]:
             print(f"  -> {link}")
+        if item.get("instances"):
+            print("  Recurring instances:")
+            for instance in item["instances"]:
+                print(f"    - Game {instance['game_number']}, move {instance['move_number']} — {instance['explanation']}")
+                for puzzle_link in instance.get("puzzle_links", []):
+                    print(f"      -> Similar puzzle: {puzzle_link}")
 
 
 def main() -> None:
