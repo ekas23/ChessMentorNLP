@@ -40,6 +40,94 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-09-21 — Deliberate Scope Change: Remove PGN Upload, Single-Input Ingestion
+**Completed:**
+- Removed the PGN-upload input path entirely from the product surface (CLI and web
+  dashboard). The ingestion/CLI/dashboard input model is now exactly: Chess.com username
+  (str) + number of games to analyze (int, default 50). No file upload, no file-picker UI,
+  no "source" selection (Chess.com only for now)
+- `src/ingestion/fetch_games.py`: added `fetch_last_n_games(username: str, n: int = 50) ->
+  list[chess.pgn.Game]` as the new single ingestion entry point. Walks the player's monthly
+  archive list newest-to-oldest, pulling whole months until >= n games collected (or
+  archives exhausted), then trims to exactly the most recent n, sorted chronologically
+  oldest->newest. Added `_get_with_retry()` (shared GET-with-one-retry helper, real
+  `User-Agent` header, no auth) and three specific exceptions:
+  `ChessComUsernameNotFoundError` (404 from the archives endpoint), `ChessComNoPublicGamesError`
+  (archives list came back empty — private/empty profile), `ChessComAPIError` (any request
+  that still fails after one retry)
+- `src/main.py`: `run_pipeline()` signature simplified to `(username, max_games=50, depth=...)`
+  — no `pgn_file`/`source` parameters. Internals factored into a new
+  `_run_pipeline_on_games(games, player_name, depth, requested_n)` so the
+  annotate->feature->weakness->nlp->recommend chain stays independently testable against
+  local PGN fixtures (used only by the test suite — see below) without needing live network,
+  while the product-facing `run_pipeline()` always goes through `fetch_last_n_games`. CLI
+  (`main()`) now takes only `--username` (required), `--max-games` (default 50), `--depth`
+  — no `--pgn-file`, no `--source`. The result dict gained a `games_requested` field so the
+  "fewer than N games available" case can be surfaced clearly ("Analyzed 23 games — this
+  account has fewer than 50 total") instead of erroring
+- `src/webapp/app.py` + `templates/index.html`: replaced the file-upload form entirely with
+  a username + game-count form (no file field, no depth field — dashboard depth is now a
+  fixed internal constant, not user-configurable, since the change request said "no other
+  fields"). `/analyze` now catches all three new Chess.com exceptions and shows a specific,
+  clear message for each (unknown username / private-empty profile / API failure), per
+  Rules.md §2. `report.html` shows the "fewer games available than requested" note when
+  applicable
+- Updated `PRD.md` (Core Features table + Goals) and `Architecture.md` (flow diagram, tech
+  stack, folder structure comments) per the change request's explicit instruction to update
+  docs before implementing
+- Updated the full test suite for the new signatures: `tests/test_ingestion.py` gained 6 new
+  tests for `fetch_last_n_games` (correct n-selection + chronological order, fewer-than-n,
+  username-not-found, empty-archives, retry-then-succeed, retry-then-fail); `tests/test_main.py`
+  and `tests/test_webapp.py` rewritten around the username+n model with mocked Chess.com
+  responses. All 55 tests passing (up from 51)
+
+**In progress / broken:**
+- None. The live Chess.com path is still only verified via mocked HTTP responses in this
+  sandbox (network to api.chess.com is blocked here, as noted since Phase 1) — recommend
+  running `python -m src.main --username <your_handle> --max-games 50` locally to confirm
+  the real API behavior (especially the 404-on-unknown-username assumption, which is based
+  on Chess.com's documented behavior but not verified against a live call from this session)
+
+**Decisions made:**
+- **`parse_pgn_file()` was NOT deleted**, despite the change request saying "parse_pgn.py now
+  only needs to parse PGN strings returned by the API, not handle file uploads." Read literally
+  that would mean deleting the function; instead I kept it as a lower-level utility (still in
+  `parse_pgn.py`, still fully general-purpose) used exclusively by the test suite to build game
+  lists from local fixtures for offline testing — this sandbox has no live network access to
+  Chess.com, so without it almost none of Phases 2-7's pipeline logic could be exercised at all
+  in this session. What WAS removed completely, per the literal and clearly primary intent of
+  the request, is every *product-facing* entry point that let a user supply a PGN directly:
+  the CLI's `--pgn-file` flag and the web dashboard's file-upload form/route are both gone,
+  not hidden or deprecated. Flagging this interpretation explicitly per Rules.md §3 rather than
+  silently either deleting a function load-bearing for testability or silently keeping a
+  product feature the change request asked to remove
+- Kept `fetch_chess_com_games()`/`fetch_lichess_games()`/`fetch_games()` (the older, more
+  permissive helpers built in Phase 1) unchanged and un-deleted, per the change request's
+  explicit instruction not to delete Lichess-related code. They're no longer used by the
+  product's main path (`run_pipeline` calls `fetch_last_n_games` directly) but remain
+  available for future Lichess work
+- Dashboard's Stockfish depth is no longer a user-facing field (previously was) — fixed at a
+  constant (10) internally, to strictly honor "no other fields" in the change request. The CLI
+  keeps `--depth` as a power-user flag, since that request's "no other fields" language was
+  specifically about the *ingestion* input model (username + game count), not analysis tuning
+- `_get_with_retry()`'s one retry uses a 1-second sleep between attempts — a small, undocumented
+  judgment call (not specified in the change request) to avoid hammering the API immediately
+  on a transient failure, without meaningfully slowing down the common case
+- Time-control filtering was explicitly NOT built (per the change request's scope note) — all
+  games regardless of time control (bullet/blitz/rapid/daily) are pulled and analyzed together.
+  **Known limitation to revisit later:** mixed time controls likely skew blunder-rate weakness
+  vectors, since blunder rates in 1-minute bullet games are structurally much higher than in
+  daily/correspondence games for the same player, and mixing them into one weakness timeline
+  could misrepresent a time-control artifact as a genuine chess weakness
+
+**Next step:**
+- Verify the live Chess.com path locally (real username, real 404 behavior)
+- If/when time-control filtering is picked up later: it would most naturally live as an
+  optional filter param on `fetch_last_n_games()` and a new field on the weakness vector
+  (Architecture.md §4), not a new pipeline layer
+
+---
+
 ### 2026-09-21 — Post-Phase-7: Local Web Dashboard (explicit user request, deviates from Rules.md)
 **Completed:**
 - `src/webapp/app.py`: a Flask app with two routes — `GET /` (upload form) and

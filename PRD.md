@@ -21,7 +21,7 @@ gap by modeling weaknesses longitudinally and explaining them in plain language.
   clear, defensible NLP + longitudinal modeling contribution
 
 ## 4. Goals
-- Ingest a player's game history (Chess.com / Lichess / uploaded PGN)
+- Ingest a player's game history via a single input: Chess.com username + number of games
 - Annotate every move with engine evaluation and derived quality label
 - Extract structured positional and tactical features per position
 - Build per-game "weakness vectors" and track them over time
@@ -38,7 +38,7 @@ gap by modeling weaknesses longitudinally and explaining them in plain language.
 ## 6. Core Features
 | # | Feature | Priority |
 |---|---------|----------|
-| 1 | Game ingestion (PGN upload + Chess.com/Lichess API pull) | Must-have |
+| 1 | Game ingestion: single input — Chess.com username + number of games (default 50). System automatically fetches the user's most recent N public games via the Chess.com API. No manual PGN upload. | Must-have |
 | 2 | Stockfish-based move annotation & quality classification | Must-have |
 | 3 | Positional feature extraction (material, king safety, pawn structure, phase) | Must-have |
 | 4 | Tactical motif detection (fork, pin, skewer) | Should-have |

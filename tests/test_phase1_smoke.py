@@ -1,12 +1,20 @@
-"""Phase 1 smoke test: data ingestion (PGN upload + API pull).
+"""Phase 1 smoke test: data ingestion (API pull; parse_pgn as a utility).
 
 Done-when criteria (Phases.md, Phase 1): you can pull your own last N games
 and get a list of parsed game objects.
 
+NOTE (2026-09-21 scope change, see Memory.md): manual PGN file upload was
+removed as a product input path -- the CLI/dashboard now only take a
+Chess.com username + game count (see main.py, webapp/app.py,
+fetch_games.fetch_last_n_games). parse_pgn_file() itself was NOT deleted --
+it remains a general-purpose parsing utility, used here and by other tests
+to build game lists from local fixtures for offline testing, since this
+sandbox has no live network access to verify the real API pull.
+
 Live network access to api.chess.com / lichess.org is blocked by this sandbox's
 egress policy, so the API-pull path is verified against a mocked HTTP response
 matching each API's real documented response shape rather than a live call.
-The PGN-upload path is verified against real multi-game PGN data on disk,
+parse_pgn_file() is verified against real multi-game PGN data on disk,
 including a deliberately malformed/empty game to confirm skip-and-log behavior.
 """
 
@@ -87,8 +95,9 @@ def main() -> None:
     test_parse_pgn_string_basic()
     test_fetch_chess_com_games_mocked()
     test_fetch_lichess_games_mocked()
-    print("\nPhase 1 smoke test PASSED: PGN upload path (live) and API pull path "
-          "(mocked, real network blocked in this sandbox) both produce parsed game objects.")
+    print("\nPhase 1 smoke test PASSED: the parse_pgn utility (live, local fixtures) and the "
+          "API pull path (mocked, real network blocked in this sandbox) both produce parsed "
+          "game objects.")
 
 
 if __name__ == "__main__":

@@ -2,8 +2,17 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.config import RAW_PGN_DIR
-from src.ingestion.fetch_games import fetch_chess_com_games, fetch_lichess_games
+from src.ingestion.fetch_games import (
+    ChessComAPIError,
+    ChessComNoPublicGamesError,
+    ChessComUsernameNotFoundError,
+    fetch_chess_com_games,
+    fetch_last_n_games,
+    fetch_lichess_games,
+)
 from src.ingestion.parse_pgn import parse_pgn_file, parse_pgn_string
 
 ONE_GAME_PGN = """[Event "Sample"]
@@ -50,3 +59,75 @@ def test_fetch_lichess_games_mocked():
     with patch("src.ingestion.fetch_games.requests.get", return_value=resp):
         games = fetch_lichess_games("u", max_games=5)
     assert len(games) == 1
+
+
+def _game_pgn(event_name: str) -> str:
+    return f'[Event "{event_name}"]\n[White "A"]\n[Black "B"]\n[Result "1-0"]\n\n1. e4 e5 1-0\n'
+
+
+def _ok_response(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.ok = True
+    resp.json.return_value = payload
+    return resp
+
+
+def test_fetch_last_n_games_selects_most_recent_n_oldest_to_newest():
+    # One month with 3 games, chronological oldest->newest as the real API returns them.
+    archives_resp = _ok_response({"archives": ["https://api.chess.com/pub/player/u/games/2026/01"]})
+    month_resp = _ok_response(
+        {"games": [{"pgn": _game_pgn("Game1")}, {"pgn": _game_pgn("Game2")}, {"pgn": _game_pgn("Game3")}]}
+    )
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=[archives_resp, month_resp]):
+        games = fetch_last_n_games("u", n=2)
+
+    assert len(games) == 2
+    assert [g.headers["Event"] for g in games] == ["Game2", "Game3"]  # oldest->newest of the most recent 2
+
+
+def test_fetch_last_n_games_returns_all_when_fewer_than_n_available():
+    archives_resp = _ok_response({"archives": ["https://api.chess.com/pub/player/u/games/2026/01"]})
+    month_resp = _ok_response({"games": [{"pgn": ONE_GAME_PGN}]})
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=[archives_resp, month_resp]):
+        games = fetch_last_n_games("u", n=50)
+    assert len(games) == 1
+
+
+def test_fetch_last_n_games_raises_username_not_found_on_404():
+    not_found = MagicMock()
+    not_found.status_code = 404
+    with patch("src.ingestion.fetch_games.requests.get", return_value=not_found):
+        with pytest.raises(ChessComUsernameNotFoundError):
+            fetch_last_n_games("no_such_user", n=10)
+
+
+def test_fetch_last_n_games_raises_no_public_games_on_empty_archives():
+    empty_archives = _ok_response({"archives": []})
+    with patch("src.ingestion.fetch_games.requests.get", return_value=empty_archives):
+        with pytest.raises(ChessComNoPublicGamesError):
+            fetch_last_n_games("private_user", n=10)
+
+
+def test_fetch_last_n_games_retries_once_then_succeeds():
+    import requests
+
+    archives_resp = _ok_response({"archives": ["https://api.chess.com/pub/player/u/games/2026/01"]})
+    month_resp = _ok_response({"games": [{"pgn": ONE_GAME_PGN}]})
+    # First call to the archives endpoint fails, second (the retry) succeeds.
+    with patch(
+        "src.ingestion.fetch_games.requests.get",
+        side_effect=[requests.exceptions.ConnectionError, archives_resp, month_resp],
+    ), patch("time.sleep"):
+        games = fetch_last_n_games("u", n=5)
+    assert len(games) == 1
+
+
+def test_fetch_last_n_games_raises_api_error_after_retry_exhausted():
+    import requests
+
+    with patch(
+        "src.ingestion.fetch_games.requests.get", side_effect=requests.exceptions.ConnectionError
+    ), patch("time.sleep"):
+        with pytest.raises(ChessComAPIError):
+            fetch_last_n_games("u", n=5)

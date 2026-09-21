@@ -4,6 +4,11 @@
 <div class="hero">
   <h1>Coaching Report</h1>
   <p>{{ player_name }} &middot; {{ result.games_analyzed }} game{{ 's' if result.games_analyzed != 1 else '' }} analyzed</p>
+  {% if result.games_requested and result.games_analyzed < result.games_requested %}
+  <p style="color: var(--saffron); font-size: 0.9rem;">
+    Requested {{ result.games_requested }} games — this account has fewer than {{ result.games_requested }} total, so all {{ result.games_analyzed }} available games were analyzed.
+  </p>
+  {% endif %}
 
   <div class="summary-strip">
     <div class="stat">

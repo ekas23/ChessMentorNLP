@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}ChessMentorNLP — Upload a Game{% endblock %}
+{% block title %}ChessMentorNLP — Analyze a Player{% endblock %}
 {% block body %}
 <div class="hero">
   <h1>ChessMentorNLP</h1>
-  <p>Upload a PGN and get a longitudinal weakness report with a training plan.</p>
+  <p>Enter a Chess.com username to get a longitudinal weakness report with a training plan.</p>
 </div>
 
 <div class="container">
@@ -12,33 +12,24 @@
   {% endif %}
 
   <div class="card">
-    <h2>Analyze a game (or a whole PGN history)</h2>
+    <h2>Analyze a player</h2>
     <p style="color: var(--muted);">
-      Upload any standard .pgn file — a single game or a multi-game export from
-      Chess.com/Lichess. Every game in the file will be analyzed together, in
-      chronological order.
+      We'll automatically pull this player's most recent public games from
+      Chess.com — no file upload needed.
     </p>
-    <form action="/analyze" method="post" enctype="multipart/form-data">
-      <label for="pgn_file">PGN file</label>
-      <input type="file" id="pgn_file" name="pgn_file" accept=".pgn" required>
+    <form action="/analyze" method="post">
+      <label for="username">Chess.com username</label>
+      <input type="text" id="username" name="username" placeholder="e.g. hikaru" required>
 
-      <label for="player_name">Player name (optional)</label>
-      <input type="text" id="player_name" name="player_name" placeholder="Used in the report title">
+      <label for="max_games">Number of games to analyze</label>
+      <input type="number" id="max_games" name="max_games" min="1" max="500" value="{{ default_n_games }}">
 
-      <label for="depth">Stockfish analysis depth</label>
-      <input type="number" id="depth" name="depth" min="4" max="18" value="{{ default_depth }}">
-      <p style="color: var(--muted); font-size: 0.85rem;">
-        Higher depth is more accurate but slower — depth {{ default_depth }} is a
-        reasonable balance for a browser wait. Large PGN files at high depth can
-        take a while (Stockfish evaluates every move).
-      </p>
-
-      <button type="submit">Analyze Game</button>
+      <button type="submit">Analyze Player</button>
     </form>
   </div>
 
   <p class="footer-note">
-    Runs entirely on your machine. Nothing is uploaded anywhere outside this local server.
+    Runs entirely on your machine. Only public Chess.com data is read — no login required.
   </p>
 </div>
 {% endblock %}

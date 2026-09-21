@@ -1,6 +1,6 @@
-"""Local-only web dashboard for ChessMentorNLP: upload a PGN, get the same
-coaching report + training plan the CLI (src/main.py) produces, rendered as a
-styled page per Design.md.
+"""Local-only web dashboard for ChessMentorNLP: enter a Chess.com username and
+a number of games, get the same coaching report + training plan the CLI
+(src/main.py) produces, rendered as a styled page per Design.md.
 
 This module is an explicit, user-requested addition on top of the phased
 build in Phases.md/Rules.md -- Rules.md normally restricts adding a web
@@ -10,6 +10,11 @@ instruction to record (not silently make) any such decision. It reuses
 src.main.run_pipeline() rather than reimplementing any pipeline logic, so the
 dashboard and the CLI can never drift out of sync on how a report is built.
 
+Single-input model (2026-09-21 scope change, see Memory.md): the form below
+takes exactly a Chess.com username and a game count -- no PGN file upload,
+no source selection. The earlier PGN-upload version of this dashboard has
+been removed entirely, not just hidden.
+
 Run locally with:
     python -m src.webapp.app
 then open http://127.0.0.1:5000 in a browser. Never exposed beyond localhost
@@ -18,19 +23,22 @@ single-player, local-first tool).
 """
 
 import logging
-import os
-import tempfile
 
 from flask import Flask, render_template, request
 
+from src.ingestion.fetch_games import (
+    DEFAULT_N_GAMES,
+    ChessComAPIError,
+    ChessComNoPublicGamesError,
+    ChessComUsernameNotFoundError,
+)
 from src.main import run_pipeline
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB is generously more than any real PGN
 
-DEFAULT_DEPTH = 10  # lower than main.py's CLI default (12) -- favors a responsive browser wait
+DASHBOARD_DEPTH = 10  # fixed, not user-configurable -- see Memory.md ("no other fields")
 CHART_METRIC = "blunder_rate_ewm"
 CHART_WIDTH = 760
 CHART_HEIGHT = 140
@@ -73,57 +81,62 @@ def _build_trend_chart(timeline: list[dict], metric: str = CHART_METRIC) -> dict
 
 @app.route("/", methods=["GET"])
 def index():
-    """Input shape: none (GET request). Output shape: rendered HTML (the upload form).
-    Purpose: landing page where the user uploads a PGN file and picks an analysis depth.
+    """Input shape: none (GET request). Output shape: rendered HTML (the input form).
+    Purpose: landing page where the user enters a Chess.com username and a game count.
     """
-    return render_template("index.html", default_depth=DEFAULT_DEPTH)
+    return render_template("index.html", default_n_games=DEFAULT_N_GAMES)
 
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    """Input shape: multipart form POST with a 'pgn_file' file field, optional 'player_name'
-    and 'depth' fields.
-    Output shape: rendered HTML (the coaching report page) or the upload form re-rendered
-    with an error message.
+    """Input shape: form POST with 'username' (str, required) and 'max_games' (int,
+    optional, defaults to DEFAULT_N_GAMES) fields. No file field -- PGN upload was
+    removed entirely per the 2026-09-21 scope change (see Memory.md).
+    Output shape: rendered HTML (the coaching report page) or the input form
+    re-rendered with a clear error message.
 
-    Purpose: save the uploaded PGN to a temp file, run the full pipeline on it via
-    src.main.run_pipeline(), and render the result. Every failure mode (no file, empty
-    file, a PGN with no valid games, an engine/pipeline error) is caught and shown to
-    the user as a clear message rather than a stack trace or a silent crash, per
-    Rules.md §2's error-handling requirement.
+    Purpose: run the full pipeline via src.main.run_pipeline() for the given
+    username/game-count and render the result. Every failure mode (missing
+    username, username not found, private/empty profile, a Chess.com API
+    failure, or any other pipeline error) is caught and shown to the user as a
+    clear message rather than a stack trace or a silent crash, per Rules.md
+    §2's error-handling requirement.
     """
-    uploaded = request.files.get("pgn_file")
-    if uploaded is None or uploaded.filename == "":
-        return render_template("index.html", default_depth=DEFAULT_DEPTH, error="Please choose a PGN file to upload.")
+    username = (request.form.get("username") or "").strip()
+    if not username:
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error="Please enter a Chess.com username.")
 
-    player_name = (request.form.get("player_name") or "").strip() or None
     try:
-        depth = int(request.form.get("depth", DEFAULT_DEPTH))
+        max_games = int(request.form.get("max_games", DEFAULT_N_GAMES))
     except ValueError:
-        depth = DEFAULT_DEPTH
-    depth = max(4, min(depth, 18))  # keep runtime sane in a browser request/response cycle
+        max_games = DEFAULT_N_GAMES
+    max_games = max(1, min(max_games, 500))  # keep runtime sane in a browser request/response cycle
 
-    tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=".pgn", delete=False) as tmp:
-            tmp.write(uploaded.read())
-            tmp_path = tmp.name
-
-        result = run_pipeline(pgn_file=tmp_path, username=player_name, depth=depth)
+        result = run_pipeline(username=username, max_games=max_games, depth=DASHBOARD_DEPTH)
+    except ChessComUsernameNotFoundError:
+        error = f"Chess.com username '{username}' was not found. Check the spelling and try again."
+        logger.warning(error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
+    except ChessComNoPublicGamesError:
+        error = f"'{username}' has no public games available (private or empty profile)."
+        logger.warning(error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
+    except ChessComAPIError as exc:
+        error = f"Chess.com API request failed: {exc}"
+        logger.warning(error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
     except Exception as exc:
-        logger.warning("Dashboard analysis failed for upload '%s': %s", uploaded.filename, exc)
+        logger.warning("Dashboard analysis failed for username '%s': %s", username, exc)
         return render_template(
             "index.html",
-            default_depth=DEFAULT_DEPTH,
-            error=f"Could not analyze this PGN: {exc}",
+            default_n_games=DEFAULT_N_GAMES,
+            error=f"Could not analyze '{username}': {exc}",
         )
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
     return render_template(
         "report.html",
-        player_name=player_name or uploaded.filename,
+        player_name=username,
         result=result,
         chart=_build_trend_chart(result["timeline"]),
         chart_width=CHART_WIDTH,

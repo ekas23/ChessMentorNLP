@@ -3,10 +3,11 @@
 ## 1. High-Level Flow
 
 ```
-Game Source (Chess.com/Lichess API or PGN upload)
+Game Source (Chess.com username + number of games, default 50 — single input,
+             no PGN upload, no source selection; see Memory.md 2026-09-21)
         │
         ▼
-[1] Ingestion Layer  ──► raw PGN → parsed game objects
+[1] Ingestion Layer  ──► fetch_last_n_games(username, n) → parsed game objects
         │
         ▼
 [2] Annotation Layer ──► Stockfish eval per move → move quality labels
@@ -37,23 +38,30 @@ Game Source (Chess.com/Lichess API or PGN upload)
 | Data handling | `pandas`, `numpy` |
 | Sequence modeling (stretch) | `torch` (LSTM) |
 | NLP report generation | Template strings (baseline) → LLM API call (upgrade) |
-| API access | `requests` (Chess.com / Lichess public APIs) |
+| API access | `requests` (Chess.com public API — primary; Lichess code retained but deprioritized, see Memory.md 2026-09-21) |
 | Storage | Local CSV/Parquet files or SQLite (no need for a full DB) |
-| Interface | Jupyter notebook or a minimal CLI (`argparse`); web UI is optional/stretch |
+| Interface | Jupyter notebook, a minimal CLI (`argparse`), and a local-only Flask dashboard (explicit user request, deviates from the default no-web-framework rule — see Memory.md) |
 
 ## 3. Folder Structure
 
 ```
 chessmentor_nlp/
 ├── data/
-│   ├── raw_pgn/                # downloaded/uploaded PGN files
+│   ├── raw_pgn/                # local PGN fixtures used only by the test suite
+│   │                           # (offline testing; NOT a product upload path)
 │   ├── annotated/              # per-move engine annotations (CSV/parquet)
 │   └── weakness_vectors/       # per-game weakness vectors, timeline data
 │
 ├── src/
 │   ├── ingestion/
-│   │   ├── fetch_games.py      # Chess.com / Lichess API pulls
-│   │   └── parse_pgn.py        # PGN → game objects
+│   │   ├── fetch_games.py      # fetch_last_n_games(username, n=50) -> list[Game] is the
+│   │   │                       # single product-facing entry point (Chess.com only, no
+│   │   │                       # manual PGN upload, no source selection — see Memory.md
+│   │   │                       # 2026-09-21). Lichess helpers retained but not wired in.
+│   │   └── parse_pgn.py        # PGN string/file -> game objects (parse_pgn_string is used
+│   │                           # by fetch_last_n_games; parse_pgn_file is a lower-level
+│   │                           # utility kept for the test suite's offline fixtures, not
+│   │                           # a user-facing upload feature)
 │   │
 │   ├── annotation/
 │   │   ├── engine.py           # Stockfish wrapper, eval per move

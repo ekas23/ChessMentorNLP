@@ -1,12 +1,14 @@
 """Tests for the local Flask dashboard (src/webapp/app.py).
 
-Uses Flask's test client (no real server/socket needed) to exercise the
-upload -> analyze -> report flow, the "not enough games for a trend" and
-"invalid PGN" fallbacks, and confirms the report reuses src.main.run_pipeline
-rather than any separate/duplicated logic.
+Single-input model (2026-09-21 scope change, see Memory.md): the dashboard
+takes a Chess.com username + game count only -- no file upload. Uses Flask's
+test client with the Chess.com API mocked (no real server/socket, no live
+network needed) to exercise the analyze flow and its error paths (missing
+username, unknown username, private/empty profile, API failure).
 """
 
-import io
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from src.config import RAW_PGN_DIR
 from src.webapp.app import app
@@ -19,56 +21,76 @@ def _client():
     return app.test_client()
 
 
+def _mock_chess_com_responses(pgn_text: str):
+    archives_resp = MagicMock()
+    archives_resp.status_code = 200
+    archives_resp.ok = True
+    archives_resp.json.return_value = {"archives": ["https://api.chess.com/pub/player/u/games/2026/01"]}
+
+    month_resp = MagicMock()
+    month_resp.status_code = 200
+    month_resp.ok = True
+    month_resp.json.return_value = {"games": [{"pgn": pgn_text}]}
+    return [archives_resp, month_resp]
+
+
 def test_index_page_loads():
     client = _client()
     resp = client.get("/")
     assert resp.status_code == 200
-    assert b"Upload a Game" in resp.data or b"ChessMentorNLP" in resp.data
+    assert b"username" in resp.data.lower()
+    assert b"pgn_file" not in resp.data  # upload path must be gone entirely
 
 
-def test_analyze_with_no_file_shows_error():
+def test_analyze_with_no_username_shows_error():
     client = _client()
-    resp = client.post("/analyze", data={}, content_type="multipart/form-data")
+    resp = client.post("/analyze", data={})
     assert resp.status_code == 200
-    assert b"Please choose a PGN file" in resp.data
+    assert b"Please enter a Chess.com username" in resp.data
 
 
-def test_analyze_with_invalid_pgn_shows_clear_error():
+def test_analyze_with_unknown_username_shows_clear_error():
     client = _client()
-    data = {"pgn_file": (io.BytesIO(b"not a real pgn"), "bad.pgn")}
-    resp = client.post("/analyze", data=data, content_type="multipart/form-data")
+    not_found_resp = MagicMock()
+    not_found_resp.status_code = 404
+    with patch("src.ingestion.fetch_games.requests.get", return_value=not_found_resp):
+        resp = client.post("/analyze", data={"username": "no_such_user_xyz", "max_games": "10"})
     assert resp.status_code == 200
-    assert b"Could not analyze this PGN" in resp.data
+    assert b"was not found" in resp.data
 
 
-def test_analyze_with_real_pgn_renders_report_and_training_plan():
+def test_analyze_with_empty_profile_shows_clear_error():
     client = _client()
-    pgn_path = RAW_PGN_DIR / "sample_short_game.pgn"
-    with open(pgn_path, "rb") as f:
-        data = {
-            "pgn_file": (io.BytesIO(f.read()), "sample_short_game.pgn"),
-            "player_name": "Dashboard Test Player",
-            "depth": str(SMOKE_TEST_DEPTH),
-        }
-        resp = client.post("/analyze", data=data, content_type="multipart/form-data")
+    empty_archives_resp = MagicMock()
+    empty_archives_resp.status_code = 200
+    empty_archives_resp.ok = True
+    empty_archives_resp.json.return_value = {"archives": []}
+    with patch("src.ingestion.fetch_games.requests.get", return_value=empty_archives_resp):
+        resp = client.post("/analyze", data={"username": "private_user", "max_games": "10"})
+    assert resp.status_code == 200
+    assert b"no public games available" in resp.data
+
+
+def test_analyze_with_real_username_renders_report_and_training_plan():
+    client = _client()
+    pgn_text = (RAW_PGN_DIR / "sample_short_game.pgn").read_text()
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(pgn_text)):
+        with patch("src.webapp.app.DASHBOARD_DEPTH", SMOKE_TEST_DEPTH):
+            resp = client.post("/analyze", data={"username": "TestPlayer", "max_games": "5"})
 
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
     assert "Coaching Report" in body
     assert "Training Plan" in body
-    assert "Dashboard Test Player" in body
+    assert "TestPlayer" in body
 
 
-def test_analyze_multi_game_pgn_renders_trend_chart():
+def test_analyze_reports_fewer_games_than_requested():
     client = _client()
-    pgn_path = RAW_PGN_DIR / "sample_multi_game.pgn"
-    with open(pgn_path, "rb") as f:
-        data = {
-            "pgn_file": (io.BytesIO(f.read()), "sample_multi_game.pgn"),
-            "depth": "6",
-        }
-        resp = client.post("/analyze", data=data, content_type="multipart/form-data")
+    pgn_text = (RAW_PGN_DIR / "sample_short_game.pgn").read_text()
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(pgn_text)):
+        with patch("src.webapp.app.DASHBOARD_DEPTH", SMOKE_TEST_DEPTH):
+            resp = client.post("/analyze", data={"username": "TestPlayer", "max_games": "50"})
 
-    assert resp.status_code == 200
     body = resp.data.decode("utf-8")
-    assert "polyline points=" in body  # trend chart was drawn (>=2 games)
+    assert "fewer than 50 total" in body
