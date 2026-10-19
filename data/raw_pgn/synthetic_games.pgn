@@ -1,0 +1,264 @@
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.01"]
+[Round "1"]
+[White "TestPlayer"]
+[Black "Opponent0"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. d4 d5 2. Qd2 e6 3. b3 Nf6 4. e4 Nxe4 5. Qe2 Bb4+ 6. Kd1 Qf6 7. Nf3 Bc3 8. Be3 O-O 9. Nbd2 Bxa1 10. Qd3 Nc3+ 11. Ke1 Nxa2 12. Nb1 Nb4 13. Qd2 Qf5 14. Kd1 N8c6 15. h3 Re8 16. Bf4 Bxd4 17. Bxc7 a5 18. Rh2 a4 19. Bb5 axb3 20. Na3 Rxa3 21. c3 Ra1+ 22. Ke2 Qe4+ 23. Qe3 Bxe3 24. fxe3 Ra2+ 25. Kf1 Qxe3 26. Bg3 b2 27. cxb4 b1=Q+ 28. Ne1 Ra1 29. Bc4 Qexe1+ 30. Bxe1 Qxe1# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.01"]
+[Round "2"]
+[White "Opponent1"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. Nf3 Nc6 2. e4 e5 3. d4 Nxd4 4. Nxe5 Bc5 5. Be3 Qh4 6. Nc3 Ne6 7. g3 Qf6 8. Ng4 Qe7 9. Bg2 Qd6 10. Qxd6 Bxd6 11. e5 Bf8 12. Bd2 Be7 13. Rf1 Bf8 14. f4 Bb4 15. f5 Nc5 16. Ne3 a6 17. Ned5 Bxc3 18. Bxc3 Rb8 19. e6 c6 20. Nb6 Nh6 21. f6 gxf6 22. Rxf6 Ng4 23. Rf4 Nxe6 24. Rxg4 Kf8 25. Bxh8 Nd8 26. Be5 f5 27. Rh4 Ra8 28. Bd6+ Kf7 29. Nxa8 b5 30. Nb6 h6 31. Nxc8 c5 32. Bd5+ Kg6 33. Rf4 b4 34. Ne7+ Kg5 35. h4+ Kh5 36. Bf3# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.02"]
+[Round "3"]
+[White "TestPlayer"]
+[Black "Opponent2"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. d3 e6 2. h3 d5 3. Nd2 c5 4. h4 Nf6 5. b3 Nc6 6. h5 d4 7. h6 gxh6 8. e4 dxe3 9. fxe3 Rg8 10. a3 Bd6 11. Qf3 Be5 12. Ra2 Bg3+ 13. Kd1 Ne5 14. Qe2 Neg4 15. Bb2 Nf2+ 16. Kc1 Nxh1 17. b4 cxb4 18. d4 Bh2 19. Qe1 Bg3 20. Qd1 Bf2 21. Bc4 b3 22. cxb3 Bd7 23. Ngf3 Ng3 24. Ne5 Nf5 25. e4 Nd6 26. d5 Be3 27. Qe2 Bxd2+ 28. Qxd2 Nfxe4 29. Qd1 Nxc4 30. dxe6 Qg5+ 31. Kb1 Ncd2+ 32. Ka1 Bxe6 33. Qe2 Nc3 34. Qc4 Bxc4 35. Bc1 Qf5 36. Nd3 Qxd3 37. g3 Qf5 38. Kb2 Rxg3 39. bxc4 Na4+ 40. Ka1 Qf6+ 41. Bb2 Nxb2 42. Rxb2 Nxc4 43. Kb1 Qg6+ 44. Ka2 Kf8 45. Ka1 Qg7 46. Kb1 Qxb2# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.02"]
+[Round "4"]
+[White "Opponent3"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. Nf3 d5 2. d4 c6 3. Bf4 h5 4. c4 Qb6 5. Qd2 h4 6. Nc3 g5 7. Nxg5 Bh6 8. c5 Qd8 9. e4 Nf6 10. Qe3 Rg8 11. O-O-O Bxg5 12. Bxg5 h3 13. Bxf6 Rg6 14. gxh3 b6 15. Bh4 a6 16. Bd3 b5 17. Rdg1 Be6 18. Rxg6 Nd7 19. exd5 b4 20. dxe6 Nf6 21. Rh6 Nd7 22. exf7+ Kf8 23. Rh7 e5 24. Bxd8 e4 25. Nd5 cxd5 26. Qg3 exd3 27. Qg8# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.03"]
+[Round "5"]
+[White "TestPlayer"]
+[Black "Opponent4"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. d4 e6 2. Nc3 d5 3. e3 Bb4 4. Rb1 Bxc3+ 5. Ke2 Ba5 6. Bd2 Bxd2 7. Qxd2 Nf6 8. f3 O-O 9. h4 Qd6 10. Kf2 Nbd7 11. g3 e5 12. b3 c5 13. Rh2 e4 14. c4 exf3 15. Kxf3 Ne4 16. Qe1 dxc4 17. b4 Qd5 18. Kg2 Nd2+ 19. Kf2 Qf5+ 20. Nf3 Qxf3+ 21. Kg1 Nxb1 22. bxc5 Na3 23. Bg2 Nc2 24. Bxf3 Nxe1 25. Be2 Re8 26. Kf1 Nc2 27. Rh1 Rxe3 28. g4 Nxd4 29. Bd1 c3 30. h5 Nxc5 31. Rg1 Rd3 32. Be2 c2 33. Kf2 Ne4+ 34. Kg2 Rg3+ 35. Kh1 Rh3+ 36. Kg2 Rg3+ 37. Kh2 Rxg1 38. Kxg1 c1=Q+ 39. Bd1 Ne2+ 40. Kg2 N2g3 41. h6 Qxd1 42. hxg7 Qe1 43. Kh3 Kxg7 44. Kg2 Qf1+ 45. Kh2 Qa1 46. Kh3 Qxa2 47. Kh4 Qg2 48. g5 Nf5+ 49. Kh5 Qf3# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.03"]
+[Round "6"]
+[White "Opponent0"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. g4 e6 2. d3 h6 3. h3 Na6 4. Bg2 c5 5. Nf3 Nb4 6. O-O Ne7 7. b3 d5 8. e3 Rb8 9. Nbd2 Qa5 10. Nh2 e5 11. a3 b6 12. Bb2 Nbc6 13. f4 c4 14. b4 Qb5 15. dxc4 dxc4 16. Ne4 Ng8 17. Nc3 Nd4 18. Nxb5 c3 19. Nxc3 Bd6 20. fxe5 Nf5 21. exd6 Nfe7 22. dxe7 Bb7 23. Qd6 Ra8 24. Bc6+ Bxc6 25. Qxc6+ Kxe7 26. Nd5+ Kf8 27. Qd6+ Ne7 28. Rxf7+ Ke8 29. Raf1 g6 30. Rf8+ Rxf8 31. Rxf8+ Kxf8 32. Qf6+ Ke8 33. Qe6 g5 34. Qxe7# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.04"]
+[Round "7"]
+[White "TestPlayer"]
+[Black "Opponent1"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. e4 d5 2. f3 e6 3. exd5 exd5 4. h4 Bd6 5. Qe2+ Ne7 6. a4 Bg3+ 7. Kd1 a5 8. b4 axb4 9. d4 O-O 10. a5 Nf5 11. Bd2 Nc6 12. Ra2 Nfxd4 13. Bg5 b3 14. Ra3 f6 15. Be3 Nxe2 16. Nxe2 bxc2+ 17. Kxc2 Bd6 18. Ra4 b5 19. Ra3 Bxa3 20. Bf4 Be7 21. g3 Nb4+ 22. Kb3 d4 23. Bg2 Qd5+ 24. Ka3 Nd3+ 25. Bd6 Qc4 26. a6 Qa4# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.04"]
+[Round "8"]
+[White "Opponent2"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. g4 Nf6 2. g5 Rg8 3. Nf3 Nh5 4. e3 Nc6 5. d4 e6 6. Nc3 Bd6 7. h4 Bf8 8. d5 Nb8 9. Nd2 g6 10. Be2 Na6 11. Nde4 Bb4 12. Bxh5 gxh5 13. Nf6+ Ke7 14. e4 Rg6 15. Qxh5 Qf8 16. Be3 d6 17. Bd2 h6 18. f4 Bc5 19. dxe6 Nb4 20. f5 b5 21. Nfd5+ Nxd5 22. Nxd5+ Ke8 23. e7 Bf2+ 24. Kxf2 Qg8 25. fxg6 Qxg6 26. Nxc7+ Kxe7 27. Qxg6 fxg6 28. gxh6 Rb8 29. h5 d5 30. Nxd5+ Ke6 31. hxg6 a5 32. h7 b4 33. h8=Q Rb7 34. Qf6+ Kd7 35. Rh8 Rb6 36. Rh7+ Ke8 37. Qh8# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.05"]
+[Round "9"]
+[White "TestPlayer"]
+[Black "Opponent3"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. Nc3 c6 2. e4 d6 3. Nf3 e5 4. h3 Be7 5. a4 f5 6. d4 fxe4 7. Ng5 exd4 8. Nb5 cxb5 9. h4 d5 10. Qxd4 Nf6 11. axb5 Qc7 12. b6 Qxc2 13. Qa4+ Qxa4 14. Rxa4 a6 15. Ra1 Bf5 16. Nh3 O-O 17. Bd2 Nbd7 18. Bc3 e3 19. b4 Ne4 20. Rc1 Rac8 21. Bd3 exf2+ 22. Kf1 Ng3+ 23. Kxf2 Nxh1+ 24. Ke3 d4+ 25. Kd2 dxc3+ 26. Ke3 Ng3 27. Nf4 Bd6 28. Nd5 Rfe8+ 29. Kf2 Bxd3 30. Rd1 Re2+ 31. Kf3 c2 32. Rc1 Rf8+ 33. Nf6+ Rxf6+ 34. Kg4 Bf5+ 35. Kg5 Rg6# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.05"]
+[Round "10"]
+[White "Opponent4"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. b4 Nf6 2. a3 a5 3. Bb2 d5 4. b5 Be6 5. Nf3 Ra7 6. e3 h6 7. d3 Ng4 8. Bd4 b6 9. Be2 f6 10. Nh4 Qc8 11. Ng6 Nxf2 12. Kxf2 Rh7 13. Bh5 Rb7 14. Qf3 c6 15. c4 Bd7 16. Ne5+ g6 17. Bxg6+ Rf7 18. Bxf7+ Kd8 19. bxc6 Bxc6 20. Nxc6+ Qxc6 21. Bxd5 Qa4 22. Bxb7 Kd7 23. Qf5+ e6 24. Qh7+ Ke8 25. Qc7 Qc2+ 26. Ke1 b5 27. Nd2 e5 28. Qc8+ Ke7 29. Bc5+ Kf7 30. Qxf8+ Kg6 31. Be4+ f5 32. Qxf5+ Kg7 33. Qg4+ Kf7 34. Rf1+ Ke8 35. Qc8# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.06"]
+[Round "11"]
+[White "TestPlayer"]
+[Black "Opponent0"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. h4 Nf6 2. d4 d5 3. Qd3 c5 4. dxc5 e5 5. f3 Nh5 6. Bg5 f6 7. Nc3 Ng3 8. Rh3 fxg5 9. Rxg3 gxh4 10. Rg4 Nc6 11. Nxd5 Bxg4 12. e4 h3 13. gxh3 Be6 14. O-O-O Bxc5 15. Ne2 O-O 16. a3 Qd6 17. b4 Bd4 18. Qb3 Rac8 19. h4 a5 20. f4 Kh8 21. Bh3 Bxh3 22. Nxd4 Nxd4 23. Qd3 Nxc2 24. bxa5 Nb4+ 25. Kb2 Nxd3+ 26. Kb3 Qc5 27. Rc1 Qb5+ 28. Nb4 Rxc1 29. f5 Nxb4 30. a6 Na2+ 31. Kxa2 Rb1 32. a7 Qb3# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.06"]
+[Round "12"]
+[White "Opponent1"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. e4 e5 2. Nf3 f6 3. Nxe5 b6 4. Qh5+ g6 5. Nxg6 Ne7 6. Nxh8+ Ng6 7. Nxg6 d6 8. Ne5+ Ke7 9. Qxh7+ Ke8 10. Qg6+ Ke7 11. Qf7# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.07"]
+[Round "13"]
+[White "TestPlayer"]
+[Black "Opponent2"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. e4 e6 2. Nf3 d5 3. exd5 exd5 4. d4 Nf6 5. Bd3 Bd6 6. O-O O-O 7. c4 dxc4 8. Bxc4 Nc6 9. g3 Bh3 10. Re1 Bg4 11. h4 Qc8 12. Nbd2 Nxd4 13. b3 Bf4 14. Be2 Bxd2 15. Bxd2 Nxe2+ 16. Qxe2 Qd7 17. Kh2 Bxf3 18. Qxf3 Qxd2 19. a3 Rae8 20. Rec1 c6 21. a4 Re3 22. Qg2 Ng4+ 23. Kg1 Re2 24. Rd1 Qb2 25. Rf1 Rxf2 26. Rxf2 Qxa1+ 27. Qf1 Qd4 28. b4 Re8 29. h5 Re3 30. Rg2 Rf3+ 31. Qf2 Nxf2 32. Kh2 Qd5 33. Rg1 Ra3 34. Rd1 Qxh5+ 35. Kg2 Qh3+ 36. Kxf2 Qh2+ 37. Kf1 Qh1+ 38. Kf2 Qh2+ 39. Kf1 Rf3+ 40. Ke1 Qf2# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.07"]
+[Round "14"]
+[White "Opponent3"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. h3 e6 2. d4 a5 3. Nc3 h6 4. e4 d5 5. Nf3 Bb4 6. Bd3 dxe4 7. Bxe4 f5 8. Ne5 Qh4 9. Bf3 h5 10. g3 Qd8 11. Bxh5+ g6 12. Bxg6+ Kf8 13. O-O Ne7 14. Nf7 Qd7 15. Nxh8 Ra6 16. Bh6+ Kg8 17. Bf7+ Kh7 18. Bf8 f4 19. Ng6 Qb5 20. Qg4 f3 21. Qh4+ Qh5 22. Qf6 a4 23. Bg8+ Kxg8 24. Qg7# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.08"]
+[Round "15"]
+[White "TestPlayer"]
+[Black "Opponent4"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. e4 e5 2. Nf3 Qe7 3. Nc3 d6 4. b3 Nf6 5. h3 Nbd7 6. Bd3 Nc5 7. b4 Nxd3+ 8. cxd3 g6 9. Bb2 Bg7 10. Qe2 O-O 11. Qf1 c6 12. a4 Re8 13. Rc1 Bd7 14. Nh2 d5 15. f3 Qxb4 16. Ba1 Qa3 17. Ke2 Rad8 18. Rg1 d4 19. g4 Bh6 20. Qg2 Bf4 21. a5 dxc3 22. h4 cxd2 23. Rc4 Be6 24. Rc3 Qxa5 25. Rb1 Qa2 26. Rd1 Bb3 27. Qg1 Ba4 28. Qf1 Re6 29. Rc4 Bxd1+ 30. Qxd1 Rxd3 31. Rc5 Re3+ 32. Kf1 Re1+ 33. Qxe1 dxe1=R+ 34. Kxe1 Bg3+ 35. Kd1 Qxa1+ 36. Ke2 Qa2+ 37. Kd1 Rd6+ 38. Rd5 Qb3+ 39. Kc1 Bf4+ 40. Rd2 Bxd2# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.08"]
+[Round "16"]
+[White "Opponent0"]
+[Black "TestPlayer"]
+[Result "*"]
+[TimeControl "600"]
+
+1. c4 e5 2. e4 Nf6 3. d3 Bb4+ 4. Bd2 a5 5. Be2 O-O 6. Nf3 Bxd2+ 7. Nfxd2 b6 8. d4 Bb7 9. Bf3 Qe8 10. O-O Na6 11. c5 b5 12. Na3 b4 13. Nac4 exd4 14. e5 Nxc5 15. Bxb7 Nxb7 16. exf6 Qe6 17. Qf3 Nc5 18. a3 b3 19. fxg7 Kxg7 20. Qg3+ Kh8 21. Qf4 Na4 22. Qxd4+ Kg8 23. Rfe1 Qa6 24. Re3 f5 25. Rg3+ Qg6 26. Rxg6+ hxg6 27. Qxd7 Nb6 28. Qc6 g5 29. Qg6+ Kh8 30. Ne5 Ra6 31. Qh5+ Kg7 32. Qxg5+ Kh7 33. Qh5+ Kg7 34. Qg5+ Kh7 35. Qh5+ Kg7 *
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.09"]
+[Round "17"]
+[White "TestPlayer"]
+[Black "Opponent1"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. d4 d5 2. a4 Nc6 3. Bf4 e6 4. g3 g5 5. Be3 h5 6. Bg2 h4 7. Qc1 Bb4+ 8. Bd2 Be7 9. c3 f6 10. Qc2 Nh6 11. Qd3 Qd6 12. Na3 Nf7 13. f4 Na5 14. e4 a6 15. e5 fxe5 16. fxe5 Nxe5 17. dxe5 Qxe5+ 18. Qe3 Qg7 19. Rd1 Nb3 20. Nc2 Nc5 21. Bc1 hxg3 22. Ne2 Rf8 23. a5 gxh2 24. b4 Nb3 25. Ncd4 Nxc1 26. Qxc1 e5 27. Qd2 exd4 28. b5 dxc3 29. Qxc3 Qxc3+ 30. Nxc3 Bd6 31. Ke2 Bg3 32. Bf3 c6 33. bxa6 g4 34. Bxd5 cxd5 35. Rd4 Rf2+ 36. Kd3 Bf5+ 37. Re4+ dxe4+ 38. Kd4 Rd2+ 39. Ke3 Rad8 40. axb7 Ke7 41. Nd5+ R8xd5 42. b8=B Bxb8 43. Rc1 h1=Q 44. Rb1 Qh6# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.09"]
+[Round "18"]
+[White "Opponent2"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. b4 f6 2. b5 d5 3. d4 Nh6 4. Nf3 Qd7 5. Bxh6 e5 6. Bd2 Bd6 7. c4 a6 8. dxe5 Bxe5 9. Nxe5 fxe5 10. e4 g6 11. cxd5 O-O 12. bxa6 Ra7 13. Bh6 Rf6 14. axb7 Bxb7 15. Be3 Ra8 16. Nc3 Bc8 17. Qd2 Na6 18. f4 Qg4 19. fxe5 Rxf1+ 20. Rxf1 Qh5 21. Bh6 Bh3 22. Qf4 Bf5 23. Rd1 g5 24. Bxg5 Bd7 25. Bh6 Rc8 26. Qf8+ Rxf8 27. Rxf8# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.10"]
+[Round "19"]
+[White "TestPlayer"]
+[Black "Opponent3"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. c4 Nf6 2. Qc2 c5 3. Nh3 Nc6 4. b3 d5 5. Ba3 d4 6. g4 Bxg4 7. Bc1 Nb4 8. Qb2 d3 9. Na3 Qd7 10. Ng5 dxe2 11. Qb1 exf1=B 12. Nc2 Bd3 13. Ne4 Nxc2+ 14. Qxc2 Nxe4 15. Qb1 Qd4 16. Rf1 Bxb1 17. b4 Qxc4 18. a3 Ng3 19. a4 Qe4# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.10"]
+[Round "20"]
+[White "Opponent4"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. Nc3 b5 2. a3 d6 3. e4 a5 4. Nf3 g6 5. Bxb5+ c6 6. Be2 e5 7. d4 Bg4 8. Bc4 Qb6 9. Bxf7+ Kxf7 10. Ng5+ Kg7 11. Qxg4 Nh6 12. Qg3 Nf7 13. Nxf7 Kxf7 14. dxe5 dxe5 15. Na4 Qa7 16. O-O Kg8 17. Be3 c5 18. Qh3 Qd7 19. Nb6 Qxh3 20. gxh3 Ra7 21. Nc4 Kf7 22. Nxe5+ Ke6 23. f4 Nd7 24. Nf3 Rb7 25. Rad1 Kf7 26. Rd3 Bh6 27. Nd2 Ke7 28. Nc4 Rhb8 29. Kg2 Kf8 30. Rfd1 Nf6 31. Bxc5+ Kg8 32. Rd8+ Bf8 33. b4 g5 34. bxa5 g4 35. a6 Nd7 36. R1xd7 gxh3+ 37. Kg3 Rxd8 38. axb7 Rb8 39. Bd4 h5 40. Ba7 h4+ 41. Kxh3 Bb4 42. Bxb8 Bc5 43. Bc7 Be7 44. Rxe7 Kf8 45. b8=Q+ Kxe7 46. Ne5 Ke6 47. Qb3+ Kf6 48. Qf7# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "21"]
+[White "TestPlayer"]
+[Black "Opponent0"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. f3 e5 2. e4 Nf6 3. g4 Nxe4 4. Nh3 Qh4+ 5. Ke2 Nc6 6. c3 d5 7. Rg1 h5 8. b3 Nd6 9. d4 hxg4 10. Qd2 gxf3+ 11. Kd1 Ne4 12. Qe3 Bxh3 13. Ba3 f2 14. Rg2 Bxg2 15. Bxf8 Bxf1 16. Ba3 Qg4+ 17. Qf3 Qxf3+ 18. Kc2 Bd3+ 19. Kb2 Qe2+ 20. Nd2 f1=Q 21. Bb4 Nxd2 22. Rd1 Nc4+ 23. Kc1 Qb2# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.11"]
+[Round "22"]
+[White "Opponent1"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. g4 b6 2. Nf3 a5 3. g5 c5 4. e4 Nc6 5. Nc3 e6 6. Nb5 d5 7. d4 f5 8. Bf4 Kf7 9. g6+ Ke7 10. exd5 Qxd5 11. Nc3 Qd7 12. d5 hxg6 13. Rg1 e5 14. Bg5+ Ke8 15. dxc6 Qd6 16. Nb5 Qe7 17. Bxe7 Bxe7 18. Nxe5 Rh4 19. Nc7+ Kf8 20. Nxg6+ Kf7 21. Qd5+ Be6 22. Qxe6# 1-0
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.12"]
+[Round "23"]
+[White "TestPlayer"]
+[Black "Opponent2"]
+[Result "0-1"]
+[TimeControl "600"]
+
+1. f4 a6 2. Nf3 e6 3. Rg1 c5 4. e4 d5 5. exd5 exd5 6. g4 Bd6 7. Ne5 Qh4+ 8. Rg3 Bxe5 9. d3 Bc7 10. Bg2 Nf6 11. Qe2+ Kd8 12. Kf1 Nxg4 13. Rxg4 Bxg4 14. Qd2 Nc6 15. Qe1 Qxh2 16. Qc3 Re8 17. f5 Be2+ 18. Kf2 Qh4+ 19. Kg1 Qh2+ 20. Kf2 Qh4+ 21. Kg1 Bh2+ 22. Kh1 Bb8+ 23. Bh3 Bf3+ 24. Kg1 Bh2+ 25. Kxh2 Re2+ 26. Kg1 Kd7 27. Qe1 Qxe1+ 28. Bf1 Qg3+ 29. Bg2 Re1# 0-1
+
+[Event "Synthetic test game"]
+[Site "Local"]
+[Date "2026.09.12"]
+[Round "24"]
+[White "Opponent3"]
+[Black "TestPlayer"]
+[Result "1-0"]
+[TimeControl "600"]
+
+1. c3 Nf6 2. Nf3 c6 3. d3 d6 4. e4 e5 5. Be2 Be7 6. Nbd2 O-O 7. O-O Nh5 8. d4 Bd7 9. Nxe5 Nf4 10. Nd3 Ne6 11. b3 f5 12. exf5 Rxf5 13. Re1 Qe8 14. Ne4 Ra5 15. b4 Rf5 16. a4 Qf8 17. Bd2 b5 18. Bh5 a6 19. Ng3 Bg5 20. Bg4 Bxd2 21. Qxd2 g6 22. axb5 h6 23. Bxf5 Nd8 24. Bxg6 a5 25. Nc5 Kg7 26. Qd3 Bf5 27. Nxf5+ Kxg6 28. Nh4+ Kg7 29. Qg3+ Kh8 30. Ng6+ Kg8 31. Nxf8+ Kxf8 32. Qg6 Nf7 33. Ne6+ Ke8 34. Ng5+ Kf8 35. Re8+ Kxe8 36. Re1+ Kd7 37. Qxf7+ Kc8 38. Ne6 Na6 39. bxa6 h5 40. Qc7# 1-0
+

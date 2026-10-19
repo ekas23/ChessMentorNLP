@@ -1,7 +1,20 @@
-"""Longitudinal (rolling/EWM) weakness trend tracking across a chronological
-batch of games — the layer that distinguishes a transient mistake from a
-persistent weakness (PRD.md's core problem statement).
+"""Longitudinal trends and the persistence test.
+
+For each metric k and game t (chronological), x[t,k] is the per-game rate from
+vectorize.py and s[t,k] its exponentially weighted moving average
+    s[t,k] = a * x[t,k] + (1 - a) * s[t-1,k],   a = 2 / (span + 1), span = 10.
+
+Metric k is PERSISTENT when all three hold:
+  (1) level:     s[N,k] >= TAU[k]                      (recently elevated)
+  (2) frequency: share of games with x[t,k] > 0 >= RHO (shows up often)
+  (3) spread:    it occurs in both the first and second half of the history
+                 (one bad week cannot produce a flag on its own)
+and at least MIN_GAMES games were analysed. TAU values are per-move rates and are
+starting defaults meant to be calibrated on a cohort (RQ3, docs/EVALUATION.md);
+they are deliberately exposed as parameters rather than hard-coded in callers.
 """
+
+from __future__ import annotations
 
 import pandas as pd
 
@@ -9,117 +22,91 @@ TREND_METRICS = [
     "blunder_rate",
     "mistake_rate",
     "inaccuracy_rate",
-    "pawn_weakness_rate",
     "missed_tactic_rate",
+    "pawn_weakness_rate",
 ]
 
-# Judgment calls (not specified in project docs), documented in Memory.md:
+DEFAULT_EWM_SPAN = 10
 DEFAULT_ROLLING_WINDOW = 5
-DEFAULT_EWM_SPAN = 5
-DEFAULT_MIN_GAMES_FOR_PERSISTENCE = 3
-DEFAULT_PERSISTENCE_THRESHOLD = 0.15
+MIN_GAMES = 10
+RHO = 0.3
+TAU = {
+    "blunder_rate": 0.03,
+    "mistake_rate": 0.04,
+    "inaccuracy_rate": 0.08,
+    "missed_tactic_rate": 0.015,
+    "pawn_weakness_rate": 0.015,
+}
 
 
 def sort_chronologically(vector_df: pd.DataFrame) -> pd.DataFrame:
-    """Input shape: pd.DataFrame with a 'date' column (raw PGN Date header strings,
-    e.g. "2026.01.01", possibly with "??" placeholders for an unknown day/month).
-    Output shape: copy of vector_df sorted ascending by parsed date (rows with an
-    unparseable/missing date are placed last, in their original relative order).
-
-    Purpose: the rolling/EWM trend functions below assume row order == chronological
-    game order; this guarantees that regardless of what order games/games were fetched in.
-    """
+    """Input: weakness vectors with a PGN 'date' column. Output: copy sorted by date
+    (stable, so same-day games keep their fetched order; unparseable dates last)."""
     df = vector_df.copy()
-    parsed_dates = pd.to_datetime(df["date"], format="%Y.%m.%d", errors="coerce")
-    df = df.assign(_parsed_date=parsed_dates)
-    df = df.sort_values("_parsed_date", kind="stable", na_position="last")
-    return df.drop(columns="_parsed_date").reset_index(drop=True)
+    df["_d"] = pd.to_datetime(df["date"], format="%Y.%m.%d", errors="coerce")
+    df = df.sort_values("_d", kind="stable", na_position="last").drop(columns="_d")
+    return df.reset_index(drop=True)
 
 
 def add_rolling_trends(
-    vector_df: pd.DataFrame,
-    window: int = DEFAULT_ROLLING_WINDOW,
-    ewm_span: int = DEFAULT_EWM_SPAN,
+    vector_df: pd.DataFrame, window: int = DEFAULT_ROLLING_WINDOW, ewm_span: int = DEFAULT_EWM_SPAN
 ) -> pd.DataFrame:
-    """Input shape: chronologically-sorted weakness-vector DataFrame (output of
-    vectorize.vectorize_games() + sort_chronologically()).
-    Output shape: copy with, for every metric in TREND_METRICS present in vector_df,
-    two new columns: '{metric}_rolling' (simple trailing rolling mean, min_periods=1)
-    and '{metric}_ewm' (exponentially weighted mean, span=ewm_span).
-
-    Purpose: build the trend columns required by Architecture.md §4's Weakness->NLP
-    contract. The EWM column is the primary trend signal (see
-    identify_persistent_weaknesses) because it weights recent games more heavily
-    without needing a hard window-size cutoff, so it adapts as new games arrive
-    while still smoothing out a single bad game.
-    """
+    """Input: chronologically sorted vectors. Output: copy with '{metric}_rolling' and
+    '{metric}_ewm' columns for every tracked metric."""
     df = vector_df.copy()
     for metric in TREND_METRICS:
-        if metric not in df.columns:
-            continue
-        df[f"{metric}_rolling"] = df[metric].rolling(window=window, min_periods=1).mean()
-        df[f"{metric}_ewm"] = df[metric].ewm(span=ewm_span, adjust=False).mean()
+        if metric in df.columns:
+            df[f"{metric}_rolling"] = df[metric].rolling(window=window, min_periods=1).mean()
+            df[f"{metric}_ewm"] = df[metric].ewm(span=ewm_span, adjust=False).mean()
     return df
 
 
-def identify_persistent_weaknesses(
-    trend_df: pd.DataFrame,
-    min_games: int = DEFAULT_MIN_GAMES_FOR_PERSISTENCE,
-    threshold: float = DEFAULT_PERSISTENCE_THRESHOLD,
-) -> list[str]:
-    """Input shape: trend_df (output of add_rolling_trends(), chronologically sorted),
-    min_games int (games required before a trend counts as persistent rather than noise),
-    threshold float (EWM rate above which a weakness is considered elevated).
-    Output shape: list[str] of metric names (from TREND_METRICS) whose EWM trend has
-    stayed above `threshold` for every one of the most recent `min_games` games.
+def persistence_diagnostics(
+    trend_df: pd.DataFrame, tau: dict | None = None, rho: float = RHO, min_games: int = MIN_GAMES
+) -> dict[str, dict]:
+    """Input: trend DataFrame (add_rolling_trends output), thresholds.
+    Output: {metric: {ewm, tau, presence, rho, first_half, second_half, persistent}}.
 
-    Purpose: the core "transient vs. persistent" distinction from PRD.md — a metric
-    that spiked once and dropped back down does not qualify; only a weakness that has
-    stayed elevated across the recent window is flagged as persistent. Returns an
-    empty list (not an error) when there isn't yet enough game history to judge.
-    """
-    if len(trend_df) < min_games:
-        return []
-
-    persistent = []
+    Purpose: compute the persistence test AND keep the evidence for each decision, so
+    the report can say why something was or wasn't flagged, and so the evaluation
+    scripts can re-run the exact same test on subsets (e.g. split halves)."""
+    tau = {**TAU, **(tau or {})}
+    n = len(trend_df)
+    out: dict[str, dict] = {}
     for metric in TREND_METRICS:
-        ewm_col = f"{metric}_ewm"
-        if ewm_col not in trend_df.columns:
+        if metric not in trend_df.columns or n == 0:
             continue
-        recent_values = trend_df[ewm_col].tail(min_games)
-        if (recent_values > threshold).all():
-            persistent.append(metric)
-    return persistent
+        values = trend_df[metric].fillna(0.0)
+        ewm_col = f"{metric}_ewm"
+        ewm = float(trend_df[ewm_col].iloc[-1]) if ewm_col in trend_df.columns else float(values.mean())
+        half = n // 2
+        first = bool((values.iloc[:half] > 0).any()) if half else False
+        second = bool((values.iloc[half:] > 0).any())
+        presence = float((values > 0).mean())
+        persistent = n >= min_games and ewm >= tau[metric] and presence >= rho and first and second
+        out[metric] = {
+            "ewm": ewm, "tau": tau[metric], "presence": presence, "rho": rho,
+            "first_half": first, "second_half": second, "games": n, "persistent": persistent,
+        }
+    return out
 
 
-def rank_weakness_tags(
-    trend_df: pd.DataFrame, persistent_weaknesses: list[str] | None = None
-) -> list[str]:
-    """Input shape: trend_df (output of add_rolling_trends(), chronologically sorted),
-    persistent_weaknesses optional list[str] (output of identify_persistent_weaknesses();
-    computed with default thresholds if omitted).
-    Output shape: list[str] of metric names, most severe first.
+def identify_persistent_weaknesses(trend_df: pd.DataFrame, **kwargs) -> list[str]:
+    """Input: trend DataFrame (+ optional tau/rho/min_games). Output: persistent metric
+    names, most severe first (by EWM relative to its threshold)."""
+    diag = persistence_diagnostics(trend_df, **kwargs)
+    flagged = [m for m, d in diag.items() if d["persistent"]]
+    return sorted(flagged, key=lambda m: diag[m]["ewm"] / diag[m]["tau"], reverse=True)
 
-    Purpose: the ranked weakness-tag list required by Architecture.md §4's
-    NLP->Recommendation contract. Persistent weaknesses are ranked first (by their
-    most recent EWM value, highest first), followed by any other tracked metrics
-    also ranked by most recent EWM value — so a report/recommendation always has a
-    full ranking to draw on, not just the (possibly empty) persistent subset.
-    """
+
+def rank_weakness_tags(trend_df: pd.DataFrame, persistent_weaknesses: list[str] | None = None) -> list[str]:
+    """Input: trend DataFrame, persistent list. Output: all tracked metrics, persistent
+    first, then the rest ordered by EWM relative to their threshold."""
     if trend_df.empty:
         return []
+    diag = persistence_diagnostics(trend_df)
     if persistent_weaknesses is None:
         persistent_weaknesses = identify_persistent_weaknesses(trend_df)
-
-    latest = trend_df.iloc[-1]
-
-    def latest_ewm(metric: str) -> float:
-        col = f"{metric}_ewm"
-        return latest[col] if col in trend_df.columns else 0.0
-
-    persistent_sorted = sorted(persistent_weaknesses, key=latest_ewm, reverse=True)
-    remaining = [
-        m for m in TREND_METRICS if m not in persistent_weaknesses and f"{m}_ewm" in trend_df.columns
-    ]
-    remaining_sorted = sorted(remaining, key=latest_ewm, reverse=True)
-    return persistent_sorted + remaining_sorted
+    rest = sorted((m for m in diag if m not in persistent_weaknesses),
+                  key=lambda m: diag[m]["ewm"] / diag[m]["tau"], reverse=True)
+    return list(persistent_weaknesses) + rest

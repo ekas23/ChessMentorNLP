@@ -23,6 +23,7 @@ single-player, local-first tool).
 """
 
 import logging
+import math
 
 from flask import Flask, render_template, request
 
@@ -32,51 +33,59 @@ from src.ingestion.fetch_games import (
     ChessComNoPublicGamesError,
     ChessComUsernameNotFoundError,
 )
+from src.ingestion.game_meta import TIME_CLASSES
 from src.main import run_pipeline
+from src.nlp.templates import metric_label
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-DASHBOARD_DEPTH = 10  # fixed, not user-configurable -- see Memory.md ("no other fields")
-CHART_METRIC = "blunder_rate_ewm"
+DASHBOARD_DEPTH = 14  # fixed, not user-configurable
 CHART_WIDTH = 760
-CHART_HEIGHT = 140
-CHART_PAD = 24
+CHART_HEIGHT = 220
+CHART_PAD_LEFT = 48
+CHART_PAD_RIGHT = 16
+CHART_PAD_TOP = 16
+CHART_PAD_BOTTOM = 32
+SERIES_COLOURS = ["#FF9933", "#138808", "#6B6B6B"]  # Design.md: saffron/green, then neutral
 
 
-def _build_trend_chart(timeline: list[dict], metric: str = CHART_METRIC) -> dict | None:
-    """Input shape: timeline (list[dict], the 'timeline' entry from run_pipeline()'s
-    result -- one dict per game with trend columns like 'blunder_rate_ewm'), metric str
-    (the column to chart).
-    Output shape: dict {points: str (an SVG <polyline> points attribute), labels:
-    list[str] (one short label per game, evenly sampled), max_value: float} or None if
-    there are fewer than 2 games (a single point can't show a trend).
+def _build_trend_chart(timeline: list[dict], metrics: list[str]) -> dict | None:
+    """Input: timeline rows (one per game, with '{metric}_ewm' columns), up to 3 metrics.
+    Output: {series: [{label, colour, points}], y_ticks: [{y, label}], x_ticks: [{x, label}],
+    width, height} for an SVG line chart, or None with fewer than 2 games.
 
-    Purpose: turn the pipeline's per-game trend data into plain SVG coordinates so the
-    report page can render a dependency-free trend line (no JS charting library needed
-    for a local dashboard), per Design.md's chart guidance (saffron/green, light background).
-    """
-    values = [row.get(metric) for row in timeline if row.get(metric) is not None]
-    if len(values) < 2:
+    Purpose: dependency-free SVG trend chart with labelled axes. The x axis is the game
+    number (matching the per-game table), the y axis is % of the player's moves."""
+    if len(timeline) < 2 or not metrics:
         return None
+    metrics = metrics[:3]
+    plot_w = CHART_WIDTH - CHART_PAD_LEFT - CHART_PAD_RIGHT
+    plot_h = CHART_HEIGHT - CHART_PAD_TOP - CHART_PAD_BOTTOM
+    all_values = [row.get(f"{m}_ewm") or 0.0 for m in metrics for row in timeline]
+    top = max(all_values) or 0.01
+    top = math.ceil(top * 100 / 2) * 2 / 100 or 0.02  # round up to a whole even percent
+    n = len(timeline)
 
-    max_value = max(values) or 1.0
-    usable_width = CHART_WIDTH - 2 * CHART_PAD
-    usable_height = CHART_HEIGHT - 2 * CHART_PAD
-    step = usable_width / (len(values) - 1)
+    def x(i: int) -> float:
+        return CHART_PAD_LEFT + plot_w * i / (n - 1)
 
-    points = []
-    for i, value in enumerate(values):
-        x = CHART_PAD + i * step
-        y = CHART_PAD + usable_height * (1 - value / max_value)
-        points.append(f"{x:.1f},{y:.1f}")
+    def y(v: float) -> float:
+        return CHART_PAD_TOP + plot_h * (1 - v / top)
 
-    label_count = min(6, len(timeline))
-    label_indices = sorted(set(round(i * (len(timeline) - 1) / max(label_count - 1, 1)) for i in range(label_count)))
-    labels = [timeline[i].get("date") or f"game {i + 1}" for i in label_indices]
-
-    return {"points": " ".join(points), "labels": labels, "max_value": max_value}
+    series = []
+    for colour, metric in zip(SERIES_COLOURS, metrics):
+        pts = " ".join(f"{x(i):.1f},{y(row.get(f'{metric}_ewm') or 0.0):.1f}" for i, row in enumerate(timeline))
+        series.append({"label": metric_label(metric), "colour": colour, "points": pts})
+    y_ticks = [{"y": round(y(top * k / 4), 1), "label": f"{top * k / 4 * 100:.1f}%"} for k in range(5)]
+    step = max(1, round(n / 8))
+    x_ticks = [{"x": round(x(i), 1), "label": str(i + 1)} for i in range(0, n, step)]
+    if x_ticks[-1]["label"] != str(n):
+        x_ticks.append({"x": round(x(n - 1), 1), "label": str(n)})
+    return {"series": series, "y_ticks": y_ticks, "x_ticks": x_ticks, "width": CHART_WIDTH,
+            "height": CHART_HEIGHT, "left": CHART_PAD_LEFT, "right": CHART_WIDTH - CHART_PAD_RIGHT,
+            "bottom": CHART_HEIGHT - CHART_PAD_BOTTOM}
 
 
 @app.route("/", methods=["GET"])
@@ -84,7 +93,7 @@ def index():
     """Input shape: none (GET request). Output shape: rendered HTML (the input form).
     Purpose: landing page where the user enters a Chess.com username and a game count.
     """
-    return render_template("index.html", default_n_games=DEFAULT_N_GAMES)
+    return render_template("index.html", default_n_games=DEFAULT_N_GAMES, time_classes=TIME_CLASSES)
 
 
 @app.route("/analyze", methods=["POST"])
@@ -104,7 +113,7 @@ def analyze():
     """
     username = (request.form.get("username") or "").strip()
     if not username:
-        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error="Please enter a Chess.com username.")
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, time_classes=TIME_CLASSES, error="Please enter a Chess.com username.")
 
     try:
         max_games = int(request.form.get("max_games", DEFAULT_N_GAMES))
@@ -112,25 +121,31 @@ def analyze():
         max_games = DEFAULT_N_GAMES
     max_games = max(1, min(max_games, 500))  # keep runtime sane in a browser request/response cycle
 
+    time_class = request.form.get("time_class") or "all"
+    if time_class not in TIME_CLASSES:
+        time_class = "all"
+
     try:
-        result = run_pipeline(username=username, max_games=max_games, depth=DASHBOARD_DEPTH)
+        result = run_pipeline(username=username, max_games=max_games, depth=DASHBOARD_DEPTH,
+                              time_class=None if time_class == "all" else time_class)
     except ChessComUsernameNotFoundError:
         error = f"Chess.com username '{username}' was not found. Check the spelling and try again."
         logger.warning(error)
-        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, time_classes=TIME_CLASSES, error=error)
     except ChessComNoPublicGamesError:
         error = f"'{username}' has no public games available (private or empty profile)."
         logger.warning(error)
-        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, time_classes=TIME_CLASSES, error=error)
     except ChessComAPIError as exc:
         error = f"Chess.com API request failed: {exc}"
         logger.warning(error)
-        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, error=error)
+        return render_template("index.html", default_n_games=DEFAULT_N_GAMES, time_classes=TIME_CLASSES, error=error)
     except Exception as exc:
         logger.warning("Dashboard analysis failed for username '%s': %s", username, exc)
         return render_template(
             "index.html",
             default_n_games=DEFAULT_N_GAMES,
+            time_classes=TIME_CLASSES,
             error=f"Could not analyze '{username}': {exc}",
         )
 
@@ -138,9 +153,8 @@ def analyze():
         "report.html",
         player_name=username,
         result=result,
-        chart=_build_trend_chart(result["timeline"]),
-        chart_width=CHART_WIDTH,
-        chart_height=CHART_HEIGHT,
+        chart=_build_trend_chart(result["timeline"], result["persistent_weaknesses"] or ["blunder_rate"]),
+        metric_label=metric_label,
     )
 
 

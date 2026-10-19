@@ -24,6 +24,17 @@
       <label for="max_games">Number of games to analyze</label>
       <input type="number" id="max_games" name="max_games" min="1" max="500" value="{{ default_n_games }}">
 
+      <label for="time_class">Time control</label>
+      <select id="time_class" name="time_class">
+        <option value="all">All time controls</option>
+        {% for tc in time_classes %}
+        <option value="{{ tc }}">{{ tc|capitalize }} only</option>
+        {% endfor %}
+      </select>
+      <p style="color: var(--muted); font-size: 0.85rem; margin: 6px 0 0;">
+        Picking one time control gives a fairer picture: bullet and blitz games naturally contain more blunders than rapid.
+      </p>
+
       <button type="submit">Analyze Player</button>
     </form>
   </div>

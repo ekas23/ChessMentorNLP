@@ -1,93 +1,69 @@
-"""Basic per-module tests for src/weakness/."""
+"""Per-game vectors (player's moves only) and the persistence test."""
 
 import pandas as pd
-import pytest
 
+from src.features.motifs import add_motif_column
+from src.features.positional import add_positional_columns
 from src.weakness.aggregate import (
+    TREND_METRICS,
     add_rolling_trends,
     identify_persistent_weaknesses,
-    rank_weakness_tags,
-    sort_chronologically,
+    persistence_diagnostics,
 )
-from src.weakness.vectorize import build_weakness_vector, vectorize_games
+from src.weakness.vectorize import MIN_PLAYER_MOVES, build_weakness_vector
+from tests.helpers import rows_from_moves
+
+SANS = ["e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "c3", "Nf6", "d4", "exd4", "cxd4", "Bb4+",
+        "Bd2", "Bxd2+", "Nbxd2", "d5", "exd5", "Nxd5", "Qb3", "Nce7", "O-O", "O-O", "Rfe1", "c6"]
 
 
-def _sample_moves_df():
-    return pd.DataFrame(
-        {
-            "game_id": ["g1"] * 4,
-            "move_number": [1, 2, 3, 4],
-            "quality_label": ["good", "blunder", "good", "mistake"],
-            "phase": ["opening", "opening", "middlegame", "middlegame"],
-            "pawn_structure": ["normal", "isolated", "normal", "normal"],
-            "king_safety": [3, 2, 2, 1],
-            "motif": ["", "fork", "", ""],
-            "eco": ["C60-C99"] * 4,
-            "opening_name": ["Ruy Lopez"] * 4,
-        }
-    )
+def _game(blunder_side):
+    """24 plies; one big evaluation drop on the given side's 11th move."""
+    evals = [20.0] * (len(SANS) + 1)
+    idx = 20 if blunder_side == "white" else 21
+    for i in range(idx + 1, len(evals)):
+        evals[i] = -500.0 if blunder_side == "white" else 500.0
+    best = ["a2a3"] * len(SANS)  # engine "preferred" something else, so the drop counts
+    df = rows_from_moves(SANS, evals, player_side="white", best=best)
+    return add_motif_column(add_positional_columns(df))
 
 
-def test_build_weakness_vector_rates():
-    vec = build_weakness_vector(_sample_moves_df(), "g1", "2026.01.01")
-    assert vec["num_moves"] == 4
-    assert vec["blunder_rate"] == 0.25
-    assert vec["mistake_rate"] == 0.25
-    assert vec["pawn_weakness_rate"] == 0.25
-    assert vec["opening_name"] == "Ruy Lopez"
+def test_opponent_blunders_do_not_count_against_the_player():
+    vec = build_weakness_vector(_game("black"), "g1", {})
+    assert vec["blunder_rate"] == 0
 
 
-def test_build_weakness_vector_raises_on_empty():
-    with pytest.raises(ValueError):
-        build_weakness_vector(pd.DataFrame(), "g1", None)
+def test_player_blunder_rate_is_per_player_move():
+    vec = build_weakness_vector(_game("white"), "g1", {})
+    assert vec["num_player_moves"] == 12
+    assert vec["blunder_rate"] == 1 / 12
 
 
-def test_vectorize_games_skips_games_with_no_rows():
-    class FakeGame:
-        headers = {"Date": "2026.01.01"}
-
-    games = [FakeGame(), FakeGame()]
-    df = vectorize_games(_sample_moves_df(), games, ["g1", "missing_game"])
-    assert len(df) == 1
-    assert df.iloc[0]["game_id"] == "g1"
+def test_short_games_are_excluded():
+    short = _game("white").head(2 * (MIN_PLAYER_MOVES - 1))
+    assert build_weakness_vector(short, "g1", {}) is None
 
 
-def _synthetic_timeline():
-    dates = [f"2026.0{i}.01" for i in range(1, 9)]
-    blunder_rates = [0.05, 0.05, 0.08, 0.20, 0.22, 0.25, 0.23, 0.24]
-    mistake_rates = [0.05, 0.05, 0.05, 0.40, 0.05, 0.05, 0.05, 0.05]
-    return pd.DataFrame(
-        {
-            "game_id": [f"game_{i}" for i in range(8)],
-            "date": dates,
-            "blunder_rate": blunder_rates,
-            "mistake_rate": mistake_rates,
-            "inaccuracy_rate": [0.05] * 8,
-            "pawn_weakness_rate": [0.1] * 8,
-            "missed_tactic_rate": [0.0] * 8,
-        }
-    )
+def _trend(series_by_metric, n=20):
+    df = pd.DataFrame({"game_id": [f"g{i}" for i in range(n)], "date": ["2026.01.01"] * n})
+    for m in TREND_METRICS:
+        df[m] = series_by_metric.get(m, [0.0] * n)
+    return add_rolling_trends(df)
 
 
-def test_sort_chronologically_orders_by_date():
-    df = _synthetic_timeline().iloc[::-1].reset_index(drop=True)  # shuffle into reverse order
-    sorted_df = sort_chronologically(df)
-    assert list(sorted_df["date"]) == sorted(sorted_df["date"].tolist())
+def test_recurring_weakness_is_persistent():
+    trend = _trend({"blunder_rate": [0.06 if i % 2 else 0.0 for i in range(20)]})
+    assert identify_persistent_weaknesses(trend) == ["blunder_rate"]
 
 
-def test_identify_persistent_weaknesses_flags_sustained_rise():
-    trend_df = add_rolling_trends(sort_chronologically(_synthetic_timeline()))
-    persistent = identify_persistent_weaknesses(trend_df)
-    assert "blunder_rate" in persistent
-    assert "mistake_rate" not in persistent  # one-off spike, not sustained
+def test_one_bad_stretch_is_not_persistent():
+    # Very high blunder rate, but only in the last 3 games (fails presence + both-halves).
+    trend = _trend({"blunder_rate": [0.0] * 17 + [0.3, 0.3, 0.3]})
+    diag = persistence_diagnostics(trend)["blunder_rate"]
+    assert diag["ewm"] > diag["tau"] and not diag["persistent"]
+    assert identify_persistent_weaknesses(trend) == []
 
 
-def test_identify_persistent_weaknesses_empty_with_too_few_games():
-    small_df = add_rolling_trends(sort_chronologically(_synthetic_timeline().head(2)))
-    assert identify_persistent_weaknesses(small_df) == []
-
-
-def test_rank_weakness_tags_orders_by_severity():
-    trend_df = add_rolling_trends(sort_chronologically(_synthetic_timeline()))
-    ranked = rank_weakness_tags(trend_df)
-    assert ranked[0] == "blunder_rate"
+def test_needs_enough_games():
+    trend = _trend({"blunder_rate": [0.1] * 5}, n=5)
+    assert identify_persistent_weaknesses(trend) == []

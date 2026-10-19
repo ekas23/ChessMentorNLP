@@ -18,7 +18,7 @@ import os
 import pandas as pd
 import requests
 
-from src.nlp.templates import template_report
+from src.nlp.templates import instance_sentence, metric_label, template_report
 
 logger = logging.getLogger(__name__)
 
@@ -29,79 +29,31 @@ REQUEST_TIMEOUT_SECONDS = 60
 
 
 def build_report_prompt(
-    vector_df: pd.DataFrame,
-    ranked_weakness_tags: list[str],
+    trend_df: pd.DataFrame,
+    persistent: list[str],
+    diagnostics: dict[str, dict],
     player_name: str,
     instances_by_weakness: dict[str, list[dict]] | None = None,
 ) -> str:
-    """Input shape: vector_df (trend-augmented weakness-vector DataFrame, chronologically
-    sorted), ranked_weakness_tags list[str], player_name str, instances_by_weakness
-    optional dict[str, list[dict]] (from nlp.instances.build_instances_by_weakness --
-    concrete per-move examples for each *persistent* weakness only; 2026-09-22 change
-    request, "Personalized Training Plan with Game Examples").
-    Output shape: str, a structured prompt summarizing the player's computed stats
-    and concrete example moments.
+    """Input: trend DataFrame, persistent metrics, persistence diagnostics, player name,
+    instances. Output: a prompt containing ONLY computed facts, for the LLM path.
 
-    Purpose: ground the LLM strictly in the pipeline's own computed numbers AND its
-    own selected, real per-move instances (never letting the model invent a game
-    number, move, or motif) — required for this to remain a "grounded NLP
-    framework" per PRD.md, and to satisfy Rules.md's "never fabricate domain facts."
-    Passing the instance data lets the generated narrative reference the player's
-    own games concretely ("In Game 12, move 18...") instead of speaking only in
-    aggregate rates, which is this change request's central ask for Phase 5.
-    """
-    games_analyzed = len(vector_df)
-    latest = vector_df.iloc[-1] if not vector_df.empty else None
-
-    lines = [
-        f"Player: {player_name}",
-        f"Games analyzed (chronological): {games_analyzed}",
-        "",
-        "Ranked recurring weaknesses (most severe/persistent first):",
-    ]
-    for rank, metric in enumerate(ranked_weakness_tags[:5], start=1):
-        ewm_col = f"{metric}_ewm"
-        if latest is not None and ewm_col in vector_df.columns:
-            lines.append(f"{rank}. {metric}: current trend rate = {latest[ewm_col]:.2%}")
-        else:
-            lines.append(f"{rank}. {metric}")
-
-    if latest is not None:
-        lines += [
-            "",
-            "Most recent game summary:",
-            f"- blunder_rate: {latest.get('blunder_rate', 0):.2%}",
-            f"- mistake_rate: {latest.get('mistake_rate', 0):.2%}",
-            f"- inaccuracy_rate: {latest.get('inaccuracy_rate', 0):.2%}",
-            f"- pawn_weakness_rate: {latest.get('pawn_weakness_rate', 0):.2%}",
-            f"- missed_tactic_rate: {latest.get('missed_tactic_rate', 0):.2%}",
-            f"- opening played: {latest.get('opening_name', 'unknown')}",
-        ]
-
-    if instances_by_weakness:
-        lines += ["", "Concrete instances of each PERSISTENT weakness (real data from this "
-                  "player's own games -- reference these directly, do not invent others):"]
-        for metric, instances in instances_by_weakness.items():
-            if not instances:
-                continue
-            lines.append(f"\n{metric}:")
-            for instance in instances:
-                lines.append(
-                    f"  - Game {instance['game_number']}, move {instance['move_number']}: "
-                    f"{instance['explanation']}"
-                )
-
-    lines += [
-        "",
-        "Write a coaching report for this player as a chess coach would, in 3-5 short "
-        "paragraphs. Use ONLY the data given above -- do not invent statistics, game "
-        "details, opening names, or instances that are not listed. When discussing a "
-        "persistent weakness that has concrete instances listed above, reference at "
-        "least one of them by game and move number so the feedback feels personal, not "
-        "generic. Explain what the recurring weaknesses mean in practical terms, note "
-        "whether each looks transient or persistent based on the trend data, and end "
-        "with encouraging, concrete guidance on what to focus on next.",
-    ]
+    Purpose: keep the LLM grounded -- it may rephrase, but every number, game and move
+    it mentions must come from this prompt."""
+    lines = [f"Player: {player_name}", f"Games analysed (chronological): {len(trend_df)}", "",
+             "Per-metric evidence (rates are per move by this player):"]
+    for metric, d in diagnostics.items():
+        lines.append(
+            f"- {metric_label(metric)}: recent rate {d['ewm']:.2%}, present in {d['presence']:.0%} of games, "
+            f"{'PERSISTENT' if d['persistent'] else 'not persistent'}"
+        )
+    for metric in persistent:
+        for inst in (instances_by_weakness or {}).get(metric, []):
+            lines.append(f"  example for {metric_label(metric)}: {instance_sentence(inst)}")
+    lines += ["", "Write a short, encouraging coaching report (3-5 paragraphs). Use ONLY the facts above. "
+              "Do not invent statistics, games, moves or openings. Discuss only weaknesses marked "
+              "PERSISTENT as patterns, cite at least one listed example for each by game number and move, "
+              "and end with what to practise next."]
     return "\n".join(lines)
 
 
@@ -132,48 +84,30 @@ def _call_anthropic_api(prompt: str, api_key: str, model: str = DEFAULT_MODEL) -
 
 
 def generate_coaching_report(
-    vector_df: pd.DataFrame,
-    ranked_weakness_tags: list[str],
+    trend_df: pd.DataFrame,
+    persistent: list[str],
+    diagnostics: dict[str, dict],
     player_name: str,
     instances_by_weakness: dict[str, list[dict]] | None = None,
+    time_class: str | None = None,
+    skipped: int = 0,
     model: str = DEFAULT_MODEL,
 ) -> dict:
-    """Input shape: vector_df (trend-augmented weakness-vector DataFrame, chronologically
-    sorted), ranked_weakness_tags list[str] (from weakness.aggregate.rank_weakness_tags),
-    player_name str, instances_by_weakness optional dict[str, list[dict]] (from
-    nlp.instances.build_instances_by_weakness; 2026-09-22 change request), model str.
-    Output shape: dict {text_report: str, source: 'llm' | 'template_fallback'}.
+    """Input: as template_report, plus model. Output: {text_report, source: 'llm' | 'template'}.
 
-    Purpose: the Phase 5B entry point. Tries the LLM path first; on any failure
-    (missing API key, network error, bad response, empty text), logs a clear
-    warning and falls back to the deterministic template report, so a coherent
-    multi-paragraph report is always produced. instances_by_weakness is passed
-    through to both paths so the narrative references concrete games/moves
-    either way, not only in the LLM path.
-    """
+    Purpose: use the LLM when ANTHROPIC_API_KEY is set, otherwise (or on any failure)
+    the deterministic template report -- a report is always produced."""
+    fallback = template_report(trend_df, persistent, diagnostics, player_name,
+                               instances_by_weakness, time_class, skipped)
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        logger.warning("ANTHROPIC_API_KEY not set; falling back to template-based report.")
-        return {
-            "text_report": template_report(
-                vector_df, ranked_weakness_tags, player_name, instances_by_weakness
-            ),
-            "source": "template_fallback",
-        }
-
-    prompt = build_report_prompt(vector_df, ranked_weakness_tags, player_name, instances_by_weakness)
+        return {"text_report": fallback, "source": "template"}
+    prompt = build_report_prompt(trend_df, persistent, diagnostics, player_name, instances_by_weakness)
     try:
         text = _call_anthropic_api(prompt, api_key, model=model)
         if not text.strip():
-            raise ValueError("Anthropic API returned an empty response")
+            raise ValueError("empty response")
         return {"text_report": text, "source": "llm"}
-    except Exception as exc:
-        logger.warning(
-            "LLM report generation failed (%s); falling back to template-based report.", exc
-        )
-        return {
-            "text_report": template_report(
-                vector_df, ranked_weakness_tags, player_name, instances_by_weakness
-            ),
-            "source": "template_fallback",
-        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM report generation failed (%s); using the template report.", exc)
+        return {"text_report": fallback, "source": "template"}

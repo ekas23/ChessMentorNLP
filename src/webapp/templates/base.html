@@ -83,10 +83,14 @@
   .rec-card a:hover { text-decoration: underline; }
   .rec-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; }
 
-  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--green); color: white; margin-left: 8px; }
+  .badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; background: var(--warning); color: white; margin-left: 8px; }
+  .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.85rem; margin: 4px 0 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+  .instance-meta { color: var(--muted); font-size: 0.8rem; }
+  td.win { color: var(--green); } td.loss { color: var(--warning); }
 
   form label { display: block; margin: 16px 0 6px; font-weight: 500; }
-  input[type="file"], input[type="text"], input[type="number"] {
+  input[type="file"], input[type="text"], input[type="number"], select {
     width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif;
   }
   button {

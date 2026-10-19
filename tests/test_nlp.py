@@ -1,96 +1,79 @@
-"""Basic per-module tests for src/nlp/."""
+"""Instance selection, narration, report text and training-plan links."""
 
 import pandas as pd
 
-from src.nlp.report_generator import build_report_prompt, generate_coaching_report
-from src.nlp.templates import move_to_text, template_report, weakness_summary_sentence
+from src.features.motifs import add_motif_column
+from src.features.positional import add_positional_columns
+from src.nlp.instances import filter_moves_for_metric, select_instances
+from src.nlp.templates import baseline_report, instance_sentence, metric_label, rate_phrase, template_report
+from src.recommend.recommender import build_training_plan, match_puzzle_for_instance
+from src.weakness.aggregate import add_rolling_trends, persistence_diagnostics
+from tests.helpers import rows_from_moves
 
 
-def _trend_df():
-    return pd.DataFrame(
-        {
-            "game_id": ["g1", "g2"],
-            "blunder_rate": [0.1, 0.3],
-            "blunder_rate_ewm": [0.15, 0.28],
-            "opening_name": ["Ruy Lopez", "Ruy Lopez"],
-        }
-    )
+def _hanging_knight_game():
+    # 1. e4 e5 2. Nf3 Nc6 3. Ng5? (engine said Bc4) Qxg5 -- the knight is lost.
+    sans = ["e4", "e5", "Nf3", "Nc6", "Ng5", "Qxg5"]
+    evals = [20, 20, 20, 20, 20, -350, -350]
+    best = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "d8g5"]
+    df = rows_from_moves(sans, evals, player_side="white", best=best)
+    df.loc[df["move_san"] == "Ng5", "best_reply_uci"] = "d8g5"
+    return add_motif_column(add_positional_columns(df))
 
 
-def test_move_to_text_includes_key_facts():
-    text = move_to_text({"move_number": 5, "move_uci": "e2e4", "quality_label": "blunder", "phase": "opening", "motif": ""})
-    assert "move 5" in text
-    assert "blunder" in text
+def test_blunder_card_only_draws_blunders_by_the_player():
+    df = _hanging_knight_game()
+    rows = filter_moves_for_metric(df, "blunder_rate")
+    assert list(rows["move_san"]) == ["Ng5"]
 
 
-def test_move_to_text_good_move_wording():
-    text = move_to_text({"move_number": 1, "move_uci": "e2e4", "quality_label": "good", "phase": "opening", "motif": ""})
-    assert "solid move" in text
+def test_instance_names_full_move_number_and_hanging_piece():
+    df = _hanging_knight_game()
+    info = {"g1": {"number": 7, "date": "2026.09.01", "opponent": "Bob", "link": "https://example/game/1"}}
+    [inst] = select_instances(df, "blunder_rate", info)
+    assert inst["move_label"] == "3. Ng5"
+    assert "left your knight on g5 to be taken by Qxg5" in inst["explanation"]
+    assert "The engine preferred Bc4." in inst["explanation"]
+    assert inst["position_url"].startswith("https://lichess.org/analysis/standard/")
+    sentence = instance_sentence(inst)
+    assert sentence.startswith("In game 7 (vs Bob, 2026.09.01), on 3. Ng5: It left")
+    assert [link["label"] for link in match_puzzle_for_instance(inst)] == ["Lichess hanging-piece puzzles"]
 
 
-def test_weakness_summary_sentence_formats_percent():
-    sentence = weakness_summary_sentence("blunder_rate", 0.21)
-    assert "21%" in sentence
+def test_rate_phrase_and_labels_are_readable():
+    assert rate_phrase(0.02) == "2.0% of your moves (about one in every 50)"
+    assert metric_label("missed_tactic_rate") == "Missed tactics"
 
 
-def test_template_report_is_multi_paragraph_and_grounded():
-    report = template_report(_trend_df(), ["blunder_rate"], "Alice")
-    assert "Alice" in report
-    assert len([p for p in report.split("\n\n") if p.strip()]) >= 3
+def _trend():
+    n = 12
+    df = pd.DataFrame({"game_id": [f"g{i}" for i in range(n)], "date": ["2026.01.01"] * n,
+                       "blunder_rate": [0.05 if i % 2 else 0.0 for i in range(n)],
+                       "mistake_rate": [0.0] * (n - 1) + [0.2], "inaccuracy_rate": [0.0] * n,
+                       "missed_tactic_rate": [0.0] * n, "pawn_weakness_rate": [0.0] * n})
+    return add_rolling_trends(df)
 
 
-def test_template_report_handles_no_weaknesses():
-    report = template_report(_trend_df(), [], "Alice")
-    assert "No clear recurring weakness" in report
+def test_template_report_explains_flagged_and_unflagged():
+    trend = _trend()
+    diag = persistence_diagnostics(trend)
+    text = template_report(trend, ["blunder_rate"], diag, "alice", {}, "rapid", skipped=2)
+    assert "last 12 rapid games" in text
+    assert "2 very short games were left out" in text
+    assert "- Blunders: recently" in text
+    assert "Also tracked but not flagged: mistakes." in text
 
 
-def test_build_report_prompt_grounds_in_real_data_only():
-    prompt = build_report_prompt(_trend_df(), ["blunder_rate"], "Alice")
-    assert "Alice" in prompt
-    assert "blunder_rate" in prompt
-    assert "do not invent" in prompt.lower()
+def test_baseline_report_has_no_examples_or_persistence():
+    text = baseline_report(_trend(), "alice")
+    assert "Blunders" in text and "In game" not in text and "recurring" not in text
 
 
-def test_generate_coaching_report_falls_back_without_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    result = generate_coaching_report(_trend_df(), ["blunder_rate"], "Alice")
-    assert result["source"] == "template_fallback"
-    assert result["text_report"].strip() != ""
-
-
-def _instances_by_weakness():
-    return {
-        "blunder_rate": [
-            {
-                "game_id": "g1", "game_number": 1, "move_number": 12,
-                "quality_label": "blunder", "motif": "fork", "phase": "middlegame",
-                "explanation": "Nf5 was a blunder during the middlegame, costing about 250 centipawns of evaluation.",
-            }
-        ]
-    }
-
-
-def test_template_report_references_concrete_instance_when_given():
-    report = template_report(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
-    assert "Game 1" in report
-    assert "move 12" in report
-
-
-def test_template_report_unaffected_without_instances():
-    # Backward-compatible: omitting instances_by_weakness still produces a full report.
-    report = template_report(_trend_df(), ["blunder_rate"], "Alice")
-    assert "Alice" in report
-    assert len([p for p in report.split("\n\n") if p.strip()]) >= 3
-
-
-def test_build_report_prompt_includes_instance_data_and_instructs_grounding():
-    prompt = build_report_prompt(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
-    assert "Game 1" in prompt
-    assert "move 12" in prompt
-    assert "do not invent" in prompt.lower()
-
-
-def test_generate_coaching_report_passes_instances_to_fallback(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    result = generate_coaching_report(_trend_df(), ["blunder_rate"], "Alice", _instances_by_weakness())
-    assert "Game 1" in result["text_report"]
+def test_training_plan_cards_carry_labelled_links():
+    plan = build_training_plan(["missed_tactic_rate"], _trend(),
+                               {"missed_tactic_rate": [{"metric": "missed_tactic_rate", "motif": "pin",
+                                                         "quality_label": "mistake", "explanation": ""}]})
+    card = plan[0]
+    assert card["training_links"][0]["url"].startswith("https://lichess.org/training/")
+    assert card["instances"][0]["practice_links"] == [
+        {"url": "https://lichess.org/training/pin", "label": "Lichess pin puzzles"}]

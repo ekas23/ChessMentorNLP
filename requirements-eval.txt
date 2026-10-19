@@ -1,0 +1,1 @@
+scipy>=1.11  # only for scripts/analyse_study.py (RQ4)

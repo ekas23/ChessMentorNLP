@@ -36,16 +36,16 @@ _WEAKNESS_RECOMMENDATIONS: dict[str, dict] = {
     "missed_tactic_rate": {
         "training_type": "puzzle",
         "puzzle_themes": ["fork", "pin", "skewer"],
-        "description": "Tactical motifs (forks, pins, skewers) were available in the game but "
-        "not converted. Targeted puzzle sets on exactly these three motifs build pattern "
-        "recognition for next time.",
+        "description": "In these positions the engine's best move was a fork, pin or skewer, "
+        "and a different move cost you. Puzzles on the exact motif you missed build the "
+        "pattern recognition to spot it next time.",
     },
     "pawn_weakness_rate": {
         "training_type": "opening_study",
         "puzzle_themes": None,
-        "description": "Isolated and doubled pawns are recurring. Study pawn-structure "
-        "principles for your usual openings (when to trade into a weak structure, and how to "
-        "play with/against an isolated queen pawn) rather than drilling puzzles for this one.",
+        "description": "Your moves keep creating isolated or doubled pawns that the engine "
+        "judged as costly. Before a pawn capture or exchange, check what it does to your "
+        "pawn structure; study material on pawn structures helps more than puzzles here.",
     },
     "opening_blunder_rate": {
         "training_type": "opening_study",
@@ -69,40 +69,39 @@ _WEAKNESS_RECOMMENDATIONS: dict[str, dict] = {
 }
 
 
-def match_puzzle_for_instance(instance: dict) -> list[str]:
-    """Input shape: instance dict (one entry from nlp.instances.select_instances --
-    has 'motif', 'quality_label', 'phase' keys).
-    Output shape: list[str], real "https://lichess.org/training/{theme}" links
-    matching that specific instance as closely as possible.
+THEME_LABELS = {
+    "fork": "fork", "pin": "pin", "skewer": "skewer", "hangingPiece": "hanging-piece",
+    "advantage": "advantage", "opening": "opening", "middlegame": "middlegame",
+    "endgame": "endgame", "pawnEndgame": "pawn-endgame", "rookEndgame": "rook-endgame",
+}
 
-    Purpose: per-instance puzzle matching (2026-09-22 change request) — match by
-    the instance's own exact motif when one was detected (fork-miss -> fork
-    puzzles, not a generic tactics link), falling back to the weakness category
-    only when no specific motif is present on that move. Per the request: "if a
-    specific instance's exact motif can't be matched... fall back to the closest
-    available theme... just use the closest match silently" -- no UI caveat is
-    shown, this function just picks the best available theme.
-    """
-    if instance.get("metric") == "pawn_weakness_rate":
-        # Same reasoning as pawn_weakness_rate's category-level recommendation:
-        # no real Lichess puzzle theme covers pawn structure, so no puzzle link
-        # is attached (a study-note recommendation, not a mismatched puzzle).
+
+def practice_link(theme: str) -> dict:
+    """Input: a Lichess puzzle theme slug. Output: {'url', 'label'} for the UI, e.g.
+    {'url': 'https://lichess.org/training/fork', 'label': 'Lichess fork puzzles'}."""
+    return {"url": LICHESS_TRAINING_URL.format(theme=theme),
+            "label": f"Lichess {THEME_LABELS.get(theme, theme)} puzzles"}
+
+
+def match_puzzle_for_instance(instance: dict) -> list[dict]:
+    """Input: one instance (nlp.instances). Output: practice links matched to what
+    actually went wrong in that instance: the missed motif's theme for a missed tactic,
+    hanging-piece puzzles for a blunder that left material en prise, the game phase
+    otherwise. Pawn-structure instances get none (Lichess has no puzzle theme for it).
+
+    These are theme pages, not a puzzle chosen to resemble the position -- the UI
+    labels them accordingly."""
+    metric = instance.get("metric")
+    if metric == "pawn_weakness_rate":
         return []
-
-    motif_tags = [tag for tag in (instance.get("motif") or "").split(",") if tag]
-    if motif_tags:
-        # All three motif names (fork/pin/skewer) are themselves real Lichess theme
-        # slugs, so an exact motif tag maps directly with no translation needed.
-        return [LICHESS_TRAINING_URL.format(theme=tag) for tag in motif_tags]
-
-    if instance.get("quality_label") == "blunder":
-        return [LICHESS_TRAINING_URL.format(theme="hangingPiece")]
-
+    if metric == "missed_tactic_rate" and instance.get("motif"):
+        return [practice_link(instance["motif"])]
+    if instance.get("quality_label") == "blunder" and "to be taken" in instance.get("explanation", ""):
+        return [practice_link("hangingPiece")]
     phase = instance.get("phase")
     if phase in ("opening", "middlegame", "endgame"):
-        return [LICHESS_TRAINING_URL.format(theme=phase)]
-
-    return [LICHESS_TRAINING_URL.format(theme="advantage")]
+        return [practice_link(phase)]
+    return [practice_link("advantage")]
 
 
 def recommend_for_weakness(metric: str, context: dict | None = None) -> dict:
@@ -126,7 +125,7 @@ def recommend_for_weakness(metric: str, context: dict | None = None) -> dict:
         }
 
     puzzle_themes = entry["puzzle_themes"] or []
-    training_links = [LICHESS_TRAINING_URL.format(theme=theme) for theme in puzzle_themes]
+    training_links = [practice_link(theme) for theme in puzzle_themes]
 
     description = entry["description"]
     if context and metric == "opening_blunder_rate" and context.get("opening_name"):
@@ -178,7 +177,7 @@ def build_training_plan(
         item = recommend_for_weakness(metric, context)
         instances = instances_by_weakness.get(metric, [])
         item["instances"] = [
-            {**instance, "puzzle_links": match_puzzle_for_instance(instance)}
+            {**instance, "practice_links": match_puzzle_for_instance(instance)}
             for instance in instances
         ]
         plan.append(item)

@@ -131,3 +131,18 @@ def test_fetch_last_n_games_raises_api_error_after_retry_exhausted():
     ), patch("time.sleep"):
         with pytest.raises(ChessComAPIError):
             fetch_last_n_games("u", n=5)
+
+
+def test_fetch_last_n_games_filters_time_class_skips_variants_and_keeps_links():
+    archives_resp = _ok_response({"archives": ["https://api.chess.com/pub/player/u/games/2026/01"]})
+    month_resp = _ok_response({"games": [
+        {"pgn": _game_pgn("Blitz1"), "time_class": "blitz", "rules": "chess", "url": "https://www.chess.com/game/live/1"},
+        {"pgn": _game_pgn("Rapid1"), "time_class": "rapid", "rules": "chess", "url": "https://www.chess.com/game/live/2"},
+        {"pgn": _game_pgn("960"), "time_class": "rapid", "rules": "chess960", "url": "https://www.chess.com/game/live/3"},
+        {"pgn": _game_pgn("Rapid2"), "time_class": "rapid", "rules": "chess", "url": "https://www.chess.com/game/live/4"},
+    ]})
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=[archives_resp, month_resp]):
+        games = fetch_last_n_games("U", n=10, time_class="rapid")
+    assert [g.headers["Event"] for g in games] == ["Rapid1", "Rapid2"]
+    assert games[0].headers["TimeClass"] == "rapid"
+    assert games[1].headers["Link"] == "https://www.chess.com/game/live/4"

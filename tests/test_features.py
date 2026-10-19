@@ -1,119 +1,105 @@
-"""Basic per-module tests for src/features/."""
+"""Motif detection, missed tactics, pawn-weakness events, phase, openings."""
 
 import chess
+import pandas as pd
 
-from src.features.motifs import add_motif_column, describe_motifs, detect_fork, detect_motifs, detect_pin, detect_skewer
-from src.features.openings import classify_eco
-from src.features.positional import game_phase, king_safety, material_balance, pawn_structure
+from src.features.motifs import add_motif_column, motifs_created_by
+from src.features.openings import classify_eco, name_from_eco_url
+from src.features.positional import game_phase, pawn_weakness_created
+from src.ingestion.game_meta import game_metadata, time_class_from_control
 from src.ingestion.parse_pgn import parse_pgn_string
+from src.annotation.classify_moves import classify_moves_df
 
 
-def test_material_balance_starting_position_is_zero():
-    assert material_balance(chess.Board()) == 0
+def _types(fen, uci):
+    return [m["type"] for m in motifs_created_by(chess.Board(fen), chess.Move.from_uci(uci))]
 
 
-def test_material_balance_reflects_captured_piece():
-    board = chess.Board()
-    board.remove_piece_at(chess.D8)  # remove Black's queen
-    assert material_balance(board) == 9
+def test_knight_fork_of_king_and_rook():
+    assert _types("r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1", "b5c7") == ["fork"]
 
 
-def test_pawn_structure_isolated():
-    board = chess.Board("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")  # lone White e-pawn
-    assert pawn_structure(board, chess.WHITE) == "isolated"
+def test_skewer_of_king_with_queen_behind():
+    assert _types("q7/8/8/k7/8/8/7R/4K3 w - - 0 1", "h2a2") == ["skewer"]
 
 
-def test_pawn_structure_doubled():
-    # Doubled e-pawns (e3, e4), but d3 keeps neither file isolated -- isolates 'doubled'
-    # as the reported weakness rather than 'isolated' (which takes priority when present).
-    board = chess.Board("4k3/8/8/8/4P3/3PP3/8/4K3 w - - 0 1")
-    assert pawn_structure(board, chess.WHITE) == "doubled"
+def test_absolute_pin():
+    assert _types("4k3/3n4/8/8/8/8/4B3/4K3 w - - 0 1", "e2b5") == ["pin"]
 
 
-def test_pawn_structure_normal():
-    board = chess.Board()
-    assert pawn_structure(board, chess.WHITE) == "normal"
+def test_two_pawns_on_a_line_are_not_a_skewer():
+    # The old detector called this a skewer ("pawn on d4 with a pawn on e5 behind it").
+    assert _types("7k/8/8/4p3/3p4/8/8/B3K3 w - - 0 1", "a1b2") == []
 
 
-def test_king_safety_higher_when_shielded():
-    shielded = chess.Board("4k3/8/8/8/8/8/PPP5/2K5 w - - 0 1")
-    exposed = chess.Board("4k3/8/8/8/8/8/8/2K5 w - - 0 1")
-    assert king_safety(shielded, chess.WHITE) > king_safety(exposed, chess.WHITE)
+def test_attacking_two_defended_cheaper_pieces_is_not_a_fork():
+    assert _types("4k3/8/3p4/2n1n3/8/8/8/3QK3 w - - 0 1", "d1d4") == []
 
 
-def test_game_phase_endgame_when_material_low():
-    board = chess.Board("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")
-    assert game_phase(board, move_number=40) == "endgame"
+def test_attacking_two_undefended_pieces_is_a_fork():
+    assert _types("4k3/8/8/2n1n3/8/8/8/3QK3 w - - 0 1", "d1d4") == ["fork"]
 
 
-def test_game_phase_opening_early_with_full_material():
-    assert game_phase(chess.Board(), move_number=2) == "opening"
+def _row(fen, played, best, wc_after_cp):
+    df = pd.DataFrame([{"game_id": "g", "ply": 1, "move_number": 1, "side": "white", "is_player": True,
+                        "fen": fen, "move_uci": played, "move_san": "", "eval_before": 0.0,
+                        "eval_after": wc_after_cp, "best_move_uci": best, "best_reply_uci": None}])
+    return add_motif_column(classify_moves_df(df)).iloc[0]
 
 
-def test_detect_fork_known_knight_fork():
-    board = chess.Board("2r3k1/4Np1p/6p1/8/8/8/8/6K1 w - - 0 1")
-    assert detect_fork(board) is True
+def test_missed_tactic_requires_engine_best_move_and_a_costly_alternative():
+    fen = "r3k3/8/8/1N6/8/8/8/4K3 w - - 0 1"
+    missed = _row(fen, "e1d2", "b5c7", -400)  # skipped the fork and it cost a lot
+    assert missed["missed_tactic"] and missed["motif"] == "fork"
+    assert missed["motif_detail"].startswith("Nc7+ would have forked")
+    harmless = _row(fen, "e1d2", "b5c7", 0)  # skipped it but lost nothing
+    assert not harmless["missed_tactic"]
+    found = _row(fen, "b5c7", "b5c7", 0)  # played it
+    assert found["motif"] == "" and not found["missed_tactic"]
 
 
-def test_detect_pin_known_position():
-    # White rook on e1 pins Black's knight on e5 to the Black king on e8.
-    board = chess.Board("4k3/8/8/4n3/8/8/8/4RK2 w - - 0 1")
-    assert detect_pin(board) is True
+def test_capture_that_isolates_pawns_is_an_event():
+    board = chess.Board("4k3/8/8/8/8/2n5/PP6/4K3 w - - 0 1")  # bxc3 leaves a- and c-pawns isolated
+    created = pawn_weakness_created(board, chess.Move.from_uci("b2c3"))
+    assert "isolated pawn on the a-file" in created and "isolated pawn on the c-file" in created
 
 
-def test_detect_motifs_returns_list():
-    board = chess.Board()
-    assert detect_motifs(board) == []
+def test_existing_weakness_is_not_counted_again():
+    board = chess.Board("4k3/8/8/8/8/8/P7/4K3 w - - 0 1")  # a-pawn already isolated
+    assert pawn_weakness_created(board, chess.Move.from_uci("e1f2")) == ""
 
 
-def test_classify_eco_ruy_lopez():
-    game = parse_pgn_string(
-        "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O *\n"
-    )[0]
-    eco = classify_eco(game)
-    assert eco["name"] == "Ruy Lopez"
+def test_doubling_pawns_is_detected():
+    board = chess.Board("4k3/8/8/8/8/3n4/2PP4/4K3 w - - 0 1")
+    assert "doubled pawns on the d-file" in pawn_weakness_created(board, chess.Move.from_uci("c2d3"))
 
 
-def test_classify_eco_unknown_returns_none():
-    game = parse_pgn_string("1. g4 e5 2. f3 *\n")[0]
-    eco = classify_eco(game)
-    assert eco["eco"] is None
-    assert eco["name"] == "Unknown/Irregular Opening"
+def test_phase_uses_full_move_number():
+    assert game_phase(chess.Board(), 10) == "opening"
+    assert game_phase(chess.Board(), 11) == "middlegame"
+    assert game_phase(chess.Board("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"), 5) == "endgame"
 
 
-def test_describe_motifs_fork_names_opponents_pieces():
-    board = chess.Board("2r3k1/4Np1p/6p1/8/8/8/8/6K1 w - - 0 1")
-    description = describe_motifs(board)
-    assert "fork on e7" in description
-    assert "opponent's" in description  # targets belong to the defender, not the mover
-    assert "your" not in description
+def test_opening_name_from_chess_com_header():
+    assert name_from_eco_url("https://www.chess.com/openings/Italian-Game-Two-Knights-Defense-4.d3") == \
+        "Italian Game Two Knights Defense"
+    game = parse_pgn_string('[ECO "B12"]\n[ECOUrl "https://www.chess.com/openings/Caro-Kann-Defense-Advance-Variation"]\n\n1. e4 c6 2. d4 d5 3. e5 *\n')[0]
+    assert classify_eco(game) == {"eco": "B12", "name": "Caro Kann Defense Advance Variation"}
 
 
-def test_describe_motifs_pin_names_opponents_piece():
-    board = chess.Board("4k3/8/8/4n3/8/8/8/4RK2 w - - 0 1")
-    description = describe_motifs(board)
-    assert "pin" in description
-    assert "opponent's knight" in description
+def test_opening_table_fallback_covers_common_first_moves():
+    game = parse_pgn_string("1. d4 Nf6 2. Bf4 e6 *\n")[0]
+    assert classify_eco(game)["name"] == "London System"
 
 
-def test_describe_motifs_skewer_names_both_pieces():
-    board = chess.Board("q7/8/8/k7/8/8/8/R6K w - - 0 1")
-    assert detect_skewer(board) is True
-    description = describe_motifs(board)
-    assert "skewer" in description
-    assert "king" in description and "queen" in description
+def test_time_class_rules():
+    assert time_class_from_control("60") == "bullet"
+    assert time_class_from_control("180+2") == "blitz"
+    assert time_class_from_control("600") == "rapid"
+    assert time_class_from_control("1/86400") == "daily"
 
 
-def test_describe_motifs_empty_when_no_motif():
-    assert describe_motifs(chess.Board()) == ""
-
-
-def test_add_motif_column_includes_motif_detail():
-    board = chess.Board("2r3k1/4Np1p/6p1/8/8/8/8/6K1 w - - 0 1")
-    import pandas as pd
-
-    df = pd.DataFrame({"fen": [board.fen(), chess.Board().fen()]})
-    df = add_motif_column(df)
-    assert "motif_detail" in df.columns
-    assert df.iloc[0]["motif_detail"] != ""
-    assert df.iloc[1]["motif_detail"] == ""
+def test_metadata_from_player_point_of_view():
+    game = parse_pgn_string('[White "Bob"]\n[Black "Alice"]\n[Result "0-1"]\n[TimeControl "300"]\n\n1. e4 e5 0-1\n')[0]
+    meta = game_metadata(game, "alice")
+    assert (meta["colour"], meta["opponent"], meta["result"], meta["time_class"]) == ("black", "Bob", "win", "blitz")

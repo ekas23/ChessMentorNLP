@@ -40,6 +40,56 @@ Keep entries short and factual. Newest entry at the top.
 
 ## Log
 
+### 2026-10-19 — Correctness overhaul of the analysis core (before any paper submission)
+**Why:** dashboard output was implausible (39% of moves "blunders", single games at 60–79%,
+pawn-pawn "skewers"). Reproduced on `sample_game.pgn` (Ruy Lopez main line, all theory):
+old code labelled 9 blunders + 19 mistakes out of 38 moves. **All results produced before
+this entry are invalid and must not be used** (incl. the class report figures).
+
+**Root causes found and fixed:**
+1. *Evaluation perspective.* `stockfish` pip wrapper v4+/v5 defaults to side-to-move scores;
+   the code assumed White's view, so the winning side's moves looked like huge losses.
+   → Replaced the wrapper with `chess.engine` and read `PovScore.white()` explicitly.
+2. *Both players counted.* Per-game rates divided by all moves in the game.
+   → `is_player` column (username matched to PGN White/Black); every rate is over the
+   analysed player's moves only.
+3. *Mate scores* were ±10000 (artificial swings) and mate-in-0 was scored for the wrong side.
+   → ±1000 cap via `mate_score`; checkmate/stalemate scored directly, never by the engine.
+4. *Labels* used raw cp thresholds (200/100/50), mislabelling moves in decided positions.
+   → Lichess winning-chance drop (0.3/0.2/0.1); the engine's own best move is never an error.
+5. *"move N" was a half-move counter* → now the PGN full-move number ("17... Nf5").
+6. *Motifs* fired on static board geometry (incl. pawn-pawn skewers) and "missed tactic" =
+   any mistake in such a position. → motifs are attributed to a move with value rules; a missed
+   tactic = engine's best move creates the motif, player played otherwise, cost ≥ mistake.
+7. *Pawn weakness* was a board state counted every move for both sides → now an event: the
+   player's move creates a new isolated/doubled pawn and costs ≥ an inaccuracy.
+8. *Instances* on the blunder card were skewer misses (motif bonus regardless of card) →
+   each card only draws rows of its own metric.
+9. *Openings* came from an 11-entry table (most games "Unknown") → Chess.com ECO/ECOUrl
+   headers first, larger fallback table.
+10. *Time controls* were mixed → optional time-class filter (dashboard, CLI, cohort script);
+    Chess.com `time_class`/`url` copied into game headers; variants (e.g. Chess960) skipped.
+11. Games with < 10 player moves excluded from rates.
+
+**Persistence test (new, documented in aggregate.py):** EWMA span 10 ≥ TAU[k], present in
+≥ 30% of games, present in both halves, ≥ 10 games. TAU defaults are starting values to be
+calibrated with the cohort run (RQ3).
+
+**UI:** readable metric names, game table with opponent/colour/result/type/link, multi-series
+chart with axes, per-instance links (open position on Lichess, view game, practise theme),
+"Similar puzzle" renamed to what it is (Lichess theme practice).
+
+**Added:** `src/evaluation/metrics.py`, `scripts/` (synthetic games, cohort run, annotation
+export/scoring, user-study reports/analysis), `docs/EVALUATION.md`, `README.md`,
+`STOCKFISH_PATH` env var. Default depth 14 (was 10 in the dashboard).
+
+**Tests:** old suite only checked shapes and passed with the bugs; replaced with 61 tests that
+pin each bug (opening theory not blunders, opponent errors excluded, pawn-pawn not a skewer,
+cards draw their own metric, etc.). Synthetic test games (`data/raw_pgn/synthetic_games.pgn`,
+Stockfish vs Stockfish at low skill) are test data only — never report them as results.
+
+**Next step:** run `docs/EVALUATION.md` on the laptop (cohort first), then fill the paper.
+
 ### 2026-09-22 — Phase 5/6 Enhancement: Personalized Training Plan with Game Examples
 **Completed:**
 - **Data-model check (done first, per the change request's explicit instruction):** the

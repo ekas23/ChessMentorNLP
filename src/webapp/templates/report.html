@@ -3,85 +3,94 @@
 {% block body %}
 <div class="hero">
   <h1>Coaching Report</h1>
-  <p>{{ player_name }} &middot; {{ result.games_analyzed }} game{{ 's' if result.games_analyzed != 1 else '' }} analyzed</p>
-  {% if result.games_requested and result.games_analyzed < result.games_requested %}
+  <p>{{ player_name }} &middot; {{ result.games_analyzed }} game{{ 's' if result.games_analyzed != 1 else '' }} analyzed
+    {% if result.time_class and result.time_class != "all" %}&middot; {{ result.time_class|capitalize }} only{% endif %}</p>
+  {% if result.games_requested and (result.games_analyzed + result.games_skipped) < result.games_requested %}
   <p style="color: var(--saffron); font-size: 0.9rem;">
-    Requested {{ result.games_requested }} games — this account has fewer than {{ result.games_requested }} total, so all {{ result.games_analyzed }} available games were analyzed.
+    You asked for {{ result.games_requested }} games; this account only had {{ result.games_analyzed + result.games_skipped }} matching public games.
   </p>
   {% endif %}
 
   <div class="summary-strip">
     <div class="stat">
-      <div class="label">Games Analyzed</div>
+      <div class="label">Games analyzed</div>
       <div class="value">{{ result.games_analyzed }}</div>
     </div>
     <div class="stat">
-      <div class="label">Top Weakness</div>
-      <div class="value">{{ result.ranked_weaknesses[0] if result.ranked_weaknesses else "—" }}</div>
+      <div class="label">Top weakness</div>
+      <div class="value">{{ metric_label(result.persistent_weaknesses[0]) if result.persistent_weaknesses else "None recurring" }}</div>
     </div>
     <div class="stat">
-      <div class="label">Persistent Weaknesses</div>
+      <div class="label">Recurring weaknesses</div>
       <div class="value">{{ result.persistent_weaknesses|length }}</div>
     </div>
     <div class="stat">
-      <div class="label">Report Source</div>
-      <div class="value">{{ "AI-generated" if result.report_source == "llm" else "Template" }}</div>
+      <div class="label">Time control</div>
+      <div class="value">{{ result.time_class|capitalize if result.time_class != "all" else "All" }}</div>
     </div>
   </div>
 </div>
 
 <div class="container">
-  <a class="back-link" href="/">&larr; Analyze another game</a>
+  <a class="back-link" href="/">&larr; Analyze another player</a>
 
   <div class="card narrative" style="margin-top: 24px;">
     <h2>Coaching Narrative</h2>
     <div class="narrative-block">{{ result.text_report }}</div>
   </div>
 
-  {% if chart %}
   <div class="card">
-    <h2>Blunder-Rate Trend</h2>
+    <h2>Weakness Trends</h2>
     <p style="color: var(--muted); font-size: 0.9rem;">
-      Exponentially weighted blunder rate across games in chronological order —
-      a rising line means the weakness is persistent, not a one-off.
+      Smoothed rate (exponentially weighted, recent games count more) as a share of your moves, game by game.
+      A weakness counts as recurring when its line stays high and it keeps appearing across the whole stretch, not when it spikes once.
     </p>
-    <svg width="100%" viewBox="0 0 {{ chart_width }} {{ chart_height }}" preserveAspectRatio="xMidYMid meet">
-      <rect x="0" y="0" width="{{ chart_width }}" height="{{ chart_height }}" fill="#FAFAF8" />
-      <polyline points="{{ chart.points }}" fill="none" stroke="#FF9933" stroke-width="2.5" />
-      {% for label in chart.labels %}
-        <text x="{{ 24 + loop.index0 * (chart_width - 48) / (chart.labels|length - 1 if chart.labels|length > 1 else 1) }}" y="{{ chart_height - 4 }}">{{ label }}</text>
+    {% if chart %}
+    <div class="legend">
+      {% for s in chart.series %}<span style="--c: {{ s.colour }}">{{ s.label }}</span>{% endfor %}
+    </div>
+    <svg width="100%" viewBox="0 0 {{ chart.width }} {{ chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weakness trend chart">
+      <rect x="0" y="0" width="{{ chart.width }}" height="{{ chart.height }}" fill="#FAFAF8" />
+      {% for t in chart.y_ticks %}
+        <line x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}" stroke="#E5E3DD" stroke-width="1" />
+        <text x="{{ chart.left - 6 }}" y="{{ t.y + 3 }}" text-anchor="end">{{ t.label }}</text>
+      {% endfor %}
+      {% for t in chart.x_ticks %}
+        <text x="{{ t.x }}" y="{{ chart.bottom + 16 }}" text-anchor="middle">{{ t.label }}</text>
+      {% endfor %}
+      <text x="{{ (chart.left + chart.right) / 2 }}" y="{{ chart.height - 2 }}" text-anchor="middle">game number</text>
+      {% for s in chart.series %}
+        <polyline points="{{ s.points }}" fill="none" stroke="{{ s.colour }}" stroke-width="2.5" stroke-linejoin="round" />
       {% endfor %}
     </svg>
-  </div>
-  {% else %}
-  <div class="card">
-    <h2>Blunder-Rate Trend</h2>
+    {% else %}
     <p style="color: var(--muted);">Not enough games yet to draw a trend line (need at least 2).</p>
+    {% endif %}
   </div>
-  {% endif %}
 
   <div class="card">
-    <h2>Per-Game Weakness Vector</h2>
+    <h2>Per-Game Breakdown</h2>
+    <p style="color: var(--muted); font-size: 0.9rem;">Percentages are shares of your own moves in that game.</p>
     <div style="overflow-x: auto;">
       <table>
         <thead>
           <tr>
-            <th>Game</th>
-            <th>Date</th>
-            <th>Blunder %</th>
-            <th>Mistake %</th>
-            <th>Inaccuracy %</th>
-            <th>Opening</th>
+            <th>Game</th><th>Date</th><th>Opponent</th><th>Colour</th><th>Result</th><th>Type</th>
+            <th>Blunder %</th><th>Mistake %</th><th>Missed tactic %</th><th>Opening</th>
           </tr>
         </thead>
         <tbody>
           {% for row in result.timeline %}
           <tr>
-            <td class="data-value">{{ loop.index }}</td>
+            <td class="data-value">{% if row.link %}<a href="{{ row.link }}" target="_blank" rel="noopener">{{ loop.index }}</a>{% else %}{{ loop.index }}{% endif %}</td>
             <td class="data-value">{{ row.date or "—" }}</td>
-            <td class="data-value">{{ "%.0f"|format((row.blunder_rate or 0) * 100) }}%</td>
-            <td class="data-value">{{ "%.0f"|format((row.mistake_rate or 0) * 100) }}%</td>
-            <td class="data-value">{{ "%.0f"|format((row.inaccuracy_rate or 0) * 100) }}%</td>
+            <td>{{ row.opponent or "—" }}</td>
+            <td>{{ row.colour or "—" }}</td>
+            <td class="{{ row.result or '' }}">{{ row.result or "—" }}</td>
+            <td>{{ row.time_class or "—" }}</td>
+            <td class="data-value">{{ "%.1f"|format((row.blunder_rate or 0) * 100) }}</td>
+            <td class="data-value">{{ "%.1f"|format((row.mistake_rate or 0) * 100) }}</td>
+            <td class="data-value">{{ "%.1f"|format((row.missed_tactic_rate or 0) * 100) }}</td>
             <td>{{ row.opening_name or "—" }}</td>
           </tr>
           {% endfor %}
@@ -93,53 +102,43 @@
   <div class="card">
     <h2>Training Plan</h2>
     <p style="color: var(--muted); font-size: 0.9rem;">
-      Only recurring (persistent) weaknesses get a card here — a one-off bad game
-      doesn't get flagged as a pattern.
+      Only recurring weaknesses get a card here. A one-off bad game doesn't count as a pattern.
     </p>
     {% if result.training_plan %}
       {% for item in result.training_plan %}
       <div class="rec-card persistent">
-        <h3>
-          {{ item.weakness.replace('_', ' ')|title }}
-          <span class="badge">persistent</span>
-        </h3>
+        <h3>{{ metric_label(item.weakness) }} <span class="badge">recurring</span></h3>
         <p>{{ item.description }}</p>
         {% if item.training_links %}
         <div class="rec-links">
-          {% for link in item.training_links %}
-            <a href="{{ link }}" target="_blank" rel="noopener">{{ link }}</a>
-          {% endfor %}
+          {% for link in item.training_links %}<a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.label }}</a>{% endfor %}
         </div>
         {% endif %}
 
         {% if item.instances %}
-        <div class="instances">
-          <p style="font-weight: 500; margin: 14px 0 6px;">Recurring instances:</p>
-          <ul style="margin: 0; padding-left: 20px;">
-            {% for instance in item.instances %}
-            <li style="margin-bottom: 10px;">
-              <span class="mono">Game {{ instance.game_number }}, move {{ instance.move_number }}</span>
-              — {{ instance.explanation }}
-              {% if instance.puzzle_links %}
-              <br>
-              {% for puzzle_link in instance.puzzle_links %}
-                <a href="{{ puzzle_link }}" target="_blank" rel="noopener" style="font-size: 0.8rem;">&rarr; Similar puzzle: {{ puzzle_link }}</a>{% if not loop.last %}<br>{% endif %}
-              {% endfor %}
-              {% endif %}
-            </li>
-            {% endfor %}
-          </ul>
-        </div>
+        <p style="font-weight: 500; margin: 14px 0 6px;">Where it happened:</p>
+        <ul style="margin: 0; padding-left: 20px;">
+          {% for instance in item.instances %}
+          <li style="margin-bottom: 12px;">
+            <span class="mono">Game {{ instance.game_number }}, {{ instance.move_label }}</span>
+            <span class="instance-meta">{% if instance.opponent %}vs {{ instance.opponent }}{% endif %}{% if instance.date %} &middot; {{ instance.date }}{% endif %}</span><br>
+            {{ instance.explanation }}<br>
+            <a href="{{ instance.position_url }}" target="_blank" rel="noopener" style="font-size: 0.8rem;">Open this position</a>
+            {% if instance.game_link %} &middot; <a href="{{ instance.game_link }}" target="_blank" rel="noopener" style="font-size: 0.8rem;">View game</a>{% endif %}
+            {% for link in instance.practice_links %} &middot; <a href="{{ link.url }}" target="_blank" rel="noopener" style="font-size: 0.8rem;">Practise: {{ link.label }}</a>{% endfor %}
+          </li>
+          {% endfor %}
+        </ul>
         {% endif %}
       </div>
       {% endfor %}
     {% else %}
-      <p style="color: var(--muted);">No persistent weaknesses identified yet — analyze more games for a training plan.</p>
+      <p style="color: var(--muted);">No recurring weaknesses identified yet. Analyze more games for a training plan.</p>
     {% endif %}
   </div>
 
   <p class="footer-note">
-    Generated locally by ChessMentorNLP. Report source: {{ result.report_source }}.
+    Generated locally by ChessMentorNLP with Stockfish{% if result.report_source == "llm" %}; narrative written by an AI model from the computed results{% endif %}.
   </p>
 </div>
 {% endblock %}

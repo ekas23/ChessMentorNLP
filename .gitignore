@@ -8,3 +8,8 @@ data/annotated/*.parquet
 data/weakness_vectors/*.csv
 data/weakness_vectors/*.parquet
 .env
+
+# Stockfish annotation cache (regenerated automatically)
+data/annotated/cache/
+# evaluation outputs
+data/evaluation/

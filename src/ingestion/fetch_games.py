@@ -84,7 +84,30 @@ def _get_with_retry(url: str, *, params: dict | None = None) -> requests.Respons
     )
 
 
-def fetch_last_n_games(username: str, n: int = DEFAULT_N_GAMES) -> list[chess.pgn.Game]:
+def _game_from_entry(entry: dict, archive_url: str) -> chess.pgn.Game | None:
+    """Input: one game object from a Chess.com monthly archive. Output: the parsed game
+    with TimeClass and Link headers filled from the JSON, or None for variants
+    (e.g. Chess960) and entries without a PGN."""
+    if entry.get("rules", "chess") != "chess":
+        return None
+    pgn_text = entry.get("pgn")
+    if not pgn_text:
+        logger.warning("Skipping Chess.com game with no PGN field in archive '%s'", archive_url)
+        return None
+    parsed = parse_pgn_string(pgn_text)
+    if not parsed:
+        return None
+    game = parsed[0]
+    if entry.get("time_class"):
+        game.headers["TimeClass"] = entry["time_class"]
+    if entry.get("url") and not game.headers.get("Link"):
+        game.headers["Link"] = entry["url"]
+    return game
+
+
+def fetch_last_n_games(
+    username: str, n: int = DEFAULT_N_GAMES, time_class: str | None = None
+) -> list[chess.pgn.Game]:
     """Input shape: username str (Chess.com handle), n int (how many of the player's
     most recent games to fetch; default 50).
     Output shape: list[chess.pgn.Game], the player's `n` most recent public games
@@ -101,7 +124,10 @@ def fetch_last_n_games(username: str, n: int = DEFAULT_N_GAMES) -> list[chess.pg
     (CLI/dashboard) are expected to catch these and show a clear message,
     never a raw traceback (Rules.md §2).
     """
-    archives_url = f"https://api.chess.com/pub/player/{username}/games/archives"
+    # time_class: optional 'bullet' | 'blitz' | 'rapid' | 'daily' filter ('all'/None = no
+    # filter). Mixing time controls distorts error rates, since fast games naturally
+    # contain far more blunders.
+    archives_url = f"https://api.chess.com/pub/player/{username.strip().lower()}/games/archives"
     response = _get_with_retry(archives_url)
 
     if response.status_code == 404:
@@ -135,11 +161,11 @@ def fetch_last_n_games(username: str, n: int = DEFAULT_N_GAMES) -> list[chess.pg
 
         month_games: list[chess.pgn.Game] = []
         for entry in month_entries:  # chronological oldest -> newest within a month
-            pgn_text = entry.get("pgn")
-            if not pgn_text:
-                logger.warning("Skipping Chess.com game with no PGN field in archive '%s'", archive_url)
+            if time_class and time_class != "all" and entry.get("time_class") != time_class:
                 continue
-            month_games.extend(parse_pgn_string(pgn_text))
+            game = _game_from_entry(entry, archive_url)
+            if game is not None:
+                month_games.append(game)
 
         games_newest_first.extend(reversed(month_games))  # newest game of the month first
 

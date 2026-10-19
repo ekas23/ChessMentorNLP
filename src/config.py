@@ -1,5 +1,6 @@
 """Shared configuration constants used across pipeline layers."""
 
+import os
 import shutil
 from pathlib import Path
 
@@ -24,6 +25,11 @@ def resolve_stockfish_path() -> str:
     the Debian/Ubuntu `stockfish` apt package installs it without adding it to PATH).
     Raises FileNotFoundError with a clear message if no binary is found anywhere.
     """
+    explicit = os.environ.get("STOCKFISH_PATH")
+    if explicit:
+        if Path(explicit).is_file():
+            return explicit
+        raise FileNotFoundError(f"STOCKFISH_PATH is set to '{explicit}', but no file exists there.")
     found = shutil.which("stockfish")
     if found:
         return found

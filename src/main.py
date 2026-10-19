@@ -15,7 +15,6 @@ import sys
 
 from src.annotation.engine import DEFAULT_DEPTH, annotate_games, derive_game_id
 from src.features.motifs import add_motif_column
-from src.features.openings import add_opening_columns
 from src.features.positional import add_positional_columns
 from src.ingestion.fetch_games import (
     DEFAULT_N_GAMES,
@@ -24,12 +23,14 @@ from src.ingestion.fetch_games import (
     ChessComUsernameNotFoundError,
     fetch_last_n_games,
 )
+from src.ingestion.game_meta import TIME_CLASSES
 from src.nlp.instances import build_instances_by_weakness
 from src.nlp.report_generator import generate_coaching_report
 from src.recommend.recommender import build_training_plan
 from src.weakness.aggregate import (
     add_rolling_trends,
     identify_persistent_weaknesses,
+    persistence_diagnostics,
     rank_weakness_tags,
     sort_chronologically,
 )
@@ -39,85 +40,72 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(username: str, max_games: int = DEFAULT_N_GAMES, depth: int = DEFAULT_DEPTH) -> dict:
-    """Input shape: username str (Chess.com handle), max_games int (how many of the
-    player's most recent games to analyze; default 50), depth int (Stockfish search depth).
-    Output shape: dict — see _run_pipeline_on_games() for the full shape.
-
-    Purpose: the single, product-facing orchestration entry point. Fetches the
-    player's most recent `max_games` public Chess.com games (see
-    ingestion.fetch_games.fetch_last_n_games) and runs them through the rest of
-    the pipeline. Lets ChessComUsernameNotFoundError / ChessComNoPublicGamesError
-    / ChessComAPIError propagate to the caller (CLI/webapp), which is expected to
-    catch them and show a clear message rather than a raw traceback (Rules.md §2)
-    -- this function itself does not swallow them, since which message to show
-    the user is a presentation-layer decision.
-    """
-    games = fetch_last_n_games(username, n=max_games)
-    return _run_pipeline_on_games(games, player_name=username, depth=depth, requested_n=max_games)
-
-
-def _run_pipeline_on_games(
-    games: list, player_name: str, depth: int = DEFAULT_DEPTH, requested_n: int | None = None
+def run_pipeline(
+    username: str, max_games: int = DEFAULT_N_GAMES, depth: int = DEFAULT_DEPTH, time_class: str | None = None
 ) -> dict:
-    """Input shape: games (list[chess.pgn.Game], already fetched/parsed), player_name str,
-    depth int, requested_n optional int (how many games were asked for, only used to
-    note in the result when fewer were available).
-    Output shape: dict {text_report: str, report_source: 'llm' | 'template_fallback',
-    training_plan: list[dict], games_analyzed: int, games_requested: int | None,
-    persistent_weaknesses: list[str], ranked_weaknesses: list[str], timeline: list[dict]}
-    — matches Architecture.md §4's final Recommendation->Output contract
-    ({text_report, training_plan}), extended with run metadata for the CLI/report display.
+    """Input: Chess.com username, number of recent games, Stockfish depth, optional
+    time-class filter. Output: see analyse_games(). Chess.com errors propagate so the
+    CLI/web layer can show a clear message."""
+    games = fetch_last_n_games(username, n=max_games, time_class=time_class)
+    return analyse_games(games, username=username, depth=depth, requested_n=max_games, time_class=time_class)
 
-    Purpose: the game-list-in, report-out core of the pipeline (annotation ->
-    features -> weakness -> NLP -> recommendation), factored out from
-    run_pipeline() so it can be exercised directly against a list of already-parsed
-    games -- used by run_pipeline() for the live Chess.com path, and by tests to
-    verify the pipeline end to end using local PGN fixtures without needing live
-    network access (this module has no other file-upload/local-file entry point;
-    see ingestion.parse_pgn.parse_pgn_file, which tests call directly to build the
-    `games` list they pass in here). Raises RuntimeError if no games survive
-    ingestion or annotation, per Rules.md's fail-fast rule.
-    """
+
+def analyse_games(
+    games: list,
+    username: str | None,
+    depth: int = DEFAULT_DEPTH,
+    requested_n: int | None = None,
+    time_class: str | None = None,
+    use_cache: bool = True,
+    return_moves: bool = False,
+) -> dict:
+    """Input: parsed games, the analysed player's username (None = treat every move as
+    the player's; only for colour-less fixtures), depth, the number requested, the
+    time-class filter used, cache flag, whether to include the per-move table.
+    Output: dict {text_report, report_source, training_plan, games_analyzed,
+    games_requested, games_skipped, time_class, persistent_weaknesses,
+    ranked_weaknesses, diagnostics, timeline[, moves]}.
+
+    Purpose: everything after ingestion. Used by run_pipeline(), the evaluation
+    scripts (cohort, split-half) and the tests (local PGN fixtures)."""
     if not games:
         raise RuntimeError("No valid games were ingested; cannot build a report")
-
     game_ids = [derive_game_id(game, i) for i, game in enumerate(games)]
 
-    moves_df = annotate_games(games, depth=depth)
+    moves_df = annotate_games(games, depth=depth, username=username, game_ids=game_ids, use_cache=use_cache)
+    if moves_df.empty:
+        raise RuntimeError("No games could be annotated; cannot build a report")
     moves_df = add_positional_columns(moves_df)
     moves_df = add_motif_column(moves_df)
-    moves_df = add_opening_columns(moves_df, games, game_ids)
 
-    vector_df = vectorize_games(moves_df, games, game_ids)
+    vector_df, skipped = vectorize_games(moves_df, games, game_ids, username)
     if vector_df.empty:
-        raise RuntimeError("No games survived annotation; cannot build a report")
+        raise RuntimeError("Every game was too short to analyse; cannot build a report")
 
-    vector_df = sort_chronologically(vector_df)
-    trend_df = add_rolling_trends(vector_df)
+    trend_df = add_rolling_trends(sort_chronologically(vector_df))
+    diagnostics = persistence_diagnostics(trend_df)
     persistent = identify_persistent_weaknesses(trend_df)
-    ranked_tags = rank_weakness_tags(trend_df, persistent)
+    ranked = rank_weakness_tags(trend_df, persistent)
+    instances = build_instances_by_weakness(moves_df, trend_df, persistent)
 
-    # Concrete per-move examples for each PERSISTENT weakness only (2026-09-22 change
-    # request) -- built from moves_df, the per-move annotated+featured data, which
-    # already carries everything needed (fen, move_uci, motif_detail, quality_label).
-    instances_by_weakness = build_instances_by_weakness(moves_df, trend_df, persistent)
-
-    report = generate_coaching_report(trend_df, ranked_tags, player_name, instances_by_weakness)
-    training_plan = build_training_plan(persistent, trend_df, instances_by_weakness)
-
-    return {
+    report = generate_coaching_report(trend_df, persistent, diagnostics, username or "this player",
+                                      instances, time_class, len(skipped))
+    result = {
         "text_report": report["text_report"],
         "report_source": report["source"],
-        "training_plan": training_plan,
+        "training_plan": build_training_plan(persistent, trend_df, instances),
         "games_analyzed": len(trend_df),
         "games_requested": requested_n,
+        "games_skipped": len(skipped),
+        "time_class": time_class or "all",
         "persistent_weaknesses": persistent,
-        "ranked_weaknesses": ranked_tags,
-        # Per-game rows (date, rates, trend columns), for the webapp dashboard's
-        # timeline chart/table -- an additive extension, existing keys are unchanged.
+        "ranked_weaknesses": ranked,
+        "diagnostics": diagnostics,
         "timeline": trend_df.to_dict(orient="records"),
     }
+    if return_moves:
+        result["moves"] = moves_df
+    return result
 
 
 def _print_result(result: dict) -> None:
@@ -142,13 +130,14 @@ def _print_result(result: dict) -> None:
         print(f"\n[{item['weakness']}] ({item['training_type']}) -- persistent")
         print(f"  {item['description']}")
         for link in item["training_links"]:
-            print(f"  -> {link}")
+            print(f"  -> {link['label']}: {link['url']}")
         if item.get("instances"):
             print("  Recurring instances:")
             for instance in item["instances"]:
-                print(f"    - Game {instance['game_number']}, move {instance['move_number']} — {instance['explanation']}")
-                for puzzle_link in instance.get("puzzle_links", []):
-                    print(f"      -> Similar puzzle: {puzzle_link}")
+                print(f"    - Game {instance['game_number']}, {instance['move_label']}: {instance['explanation']}")
+                print(f"      position: {instance['position_url']}")
+                for link in instance.get("practice_links", []):
+                    print(f"      practise: {link['label']} {link['url']}")
 
 
 def main() -> None:
@@ -166,10 +155,13 @@ def main() -> None:
         help=f"Number of most recent games to analyze (default {DEFAULT_N_GAMES})",
     )
     parser.add_argument("--depth", type=int, default=DEFAULT_DEPTH, help="Stockfish search depth")
+    parser.add_argument("--time-class", choices=["all", *TIME_CLASSES], default="all",
+                        help="Only analyse games of this time control (default: all)")
     args = parser.parse_args()
 
     try:
-        result = run_pipeline(username=args.username, max_games=args.max_games, depth=args.depth)
+        result = run_pipeline(username=args.username, max_games=args.max_games, depth=args.depth,
+                              time_class=None if args.time_class == "all" else args.time_class)
     except ChessComUsernameNotFoundError:
         logger.error("Chess.com username '%s' was not found. Check the spelling and try again.", args.username)
         sys.exit(1)

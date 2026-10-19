@@ -1,106 +1,94 @@
-"""Per-game weakness vector construction from the annotated+featured move data.
+"""Per-game weakness vectors, computed over the ANALYSED PLAYER'S moves only.
 
-Turns the per-move DataFrame (Architecture.md §4's Features output) into one
-row per game summarizing rate-based weakness signals, per PRD.md's goal of
-distinguishing persistent weaknesses from one-off mistakes.
+The previous version divided by every move in the game (both players), so the
+opponent's mistakes were counted against the player. Every rate below is
+(number of the player's moves showing the weakness) / (number of the player's
+moves in the game).
+
+Metrics (all per player move):
+  blunder_rate, mistake_rate, inaccuracy_rate  -- quality labels (classify_moves.py)
+  missed_tactic_rate  -- engine's best move created a fork/pin/skewer, the player
+                         played something else, and it was a mistake or blunder
+  pawn_weakness_rate  -- the move created a new isolated/doubled pawn for the player
+                         AND was at least an inaccuracy (structural concessions that
+                         the engine considers fine are not counted)
+  {opening,middlegame,endgame}_blunder_rate -- blunders+mistakes within that phase
+Games where the player made fewer than MIN_PLAYER_MOVES moves are excluded:
+one blunder in a 4-move game would otherwise read as a 25% blunder rate.
 """
+
+from __future__ import annotations
+
+import logging
 
 import chess.pgn
 import pandas as pd
 
-MISTAKE_LABELS = ["blunder", "mistake"]
+from src.annotation.classify_moves import MISTAKE_LABELS
+from src.ingestion.game_meta import game_metadata
+
+logger = logging.getLogger(__name__)
+
 GAME_PHASES = ["opening", "middlegame", "endgame"]
+MIN_PLAYER_MOVES = 10
+WEAK_LABELS = ["blunder", "mistake", "inaccuracy"]
 
 
-def build_weakness_vector(game_moves_df: pd.DataFrame, game_id: str, game_date: str | None) -> dict:
-    """Input shape: game_moves_df (pd.DataFrame of annotated+featured move rows for exactly
-    one game — game_id, quality_label, phase, pawn_structure, king_safety, motif, eco,
-    opening_name columns), game_id str, game_date str | None (raw PGN Date header, e.g.
-    "2026.01.01" or with "??" placeholders).
-    Output shape: dict — one weakness-vector row (see module docstring for fields).
+def player_moves(game_moves_df: pd.DataFrame) -> pd.DataFrame:
+    """Input: one game's (or many games') move rows. Output: only the analysed player's rows."""
+    if "is_player" not in game_moves_df.columns:
+        return game_moves_df
+    return game_moves_df[game_moves_df["is_player"].astype(bool)]
 
-    Purpose: summarize a single game's move-by-move data into rate-based weakness
-    signals suitable for cross-game longitudinal comparison. Raises ValueError if
-    game_moves_df is empty — an empty game should never silently produce a vector
-    of zeros/NaNs that looks like "no weaknesses" (Rules.md: fail fast, don't
-    propagate missing data silently).
-    """
-    if game_moves_df.empty:
-        raise ValueError(f"Cannot build a weakness vector for game '{game_id}': no move rows")
 
-    n = len(game_moves_df)
-    label_counts = game_moves_df["quality_label"].value_counts()
+def is_pawn_weakness(df: pd.DataFrame) -> pd.Series:
+    """Rows where the move created a pawn weakness that cost at least an inaccuracy."""
+    return (df["pawn_weakness_created"].fillna("") != "") & df["quality_label"].isin(WEAK_LABELS)
 
+
+def build_weakness_vector(game_moves_df: pd.DataFrame, game_id: str, meta: dict) -> dict | None:
+    """Input: one game's annotated+featured rows, its id, its metadata (game_meta.game_metadata).
+    Output: one weakness-vector row (dict), or None if the player made too few moves."""
+    mine = player_moves(game_moves_df)
+    n = len(mine)
+    if n < MIN_PLAYER_MOVES:
+        return None
+    labels = mine["quality_label"].value_counts()
     vector = {
         "game_id": game_id,
-        "date": game_date,
-        "num_moves": n,
-        "blunder_rate": label_counts.get("blunder", 0) / n,
-        "mistake_rate": label_counts.get("mistake", 0) / n,
-        "inaccuracy_rate": label_counts.get("inaccuracy", 0) / n,
-        "pawn_weakness_rate": (game_moves_df["pawn_structure"] != "normal").mean(),
-        "king_safety_avg": game_moves_df["king_safety"].mean(),
-        "missed_tactic_rate": _missed_tactic_rate(game_moves_df),
-        "eco": game_moves_df["eco"].iloc[0] if "eco" in game_moves_df.columns else None,
-        "opening_name": (
-            game_moves_df["opening_name"].iloc[0] if "opening_name" in game_moves_df.columns else None
-        ),
+        **meta,
+        "num_player_moves": n,
+        "blunder_rate": labels.get("blunder", 0) / n,
+        "mistake_rate": labels.get("mistake", 0) / n,
+        "inaccuracy_rate": labels.get("inaccuracy", 0) / n,
+        "missed_tactic_rate": mine["missed_tactic"].astype(bool).sum() / n,
+        "pawn_weakness_rate": is_pawn_weakness(mine).sum() / n,
+        "king_safety_avg": mine["king_safety"].mean(),
     }
     for phase in GAME_PHASES:
-        vector[f"{phase}_blunder_rate"] = _phase_mistake_rate(game_moves_df, phase)
+        in_phase = mine[mine["phase"] == phase]
+        vector[f"{phase}_blunder_rate"] = (
+            None if in_phase.empty else in_phase["quality_label"].isin(MISTAKE_LABELS).mean()
+        )
     return vector
 
 
 def vectorize_games(
-    moves_df: pd.DataFrame, games: list[chess.pgn.Game], game_ids: list[str]
-) -> pd.DataFrame:
-    """Input shape: moves_df (the full annotated+featured DataFrame across all games),
-    games (list[chess.pgn.Game]), game_ids (list[str], same order/length as games — the
-    ids from annotation.engine.derive_game_id).
-    Output shape: pd.DataFrame, one row per game (per Architecture.md §4's
-    Weakness->NLP contract), in the same order as `games`.
-
-    Purpose: batch entry point building the full weakness-vector table. A game with
-    zero surviving move rows (e.g. it was skipped earlier in annotation) is logged
-    and excluded rather than producing a degenerate all-NaN row.
-    """
-    rows = []
+    moves_df: pd.DataFrame, games: list[chess.pgn.Game], game_ids: list[str], username: str | None = None
+) -> tuple[pd.DataFrame, list[str]]:
+    """Input: all move rows, the games, their ids, the analysed player's username.
+    Output: (one row per kept game in input order, list of game_ids skipped as too short
+    or missing annotation)."""
+    rows, skipped = [], []
     for game_id, game in zip(game_ids, games, strict=True):
-        game_moves_df = moves_df[moves_df["game_id"] == game_id]
-        try:
-            rows.append(build_weakness_vector(game_moves_df, game_id, game.headers.get("Date")))
-        except ValueError:
+        game_rows = moves_df[moves_df["game_id"] == game_id]
+        vector = None if game_rows.empty else build_weakness_vector(
+            game_rows, game_id, game_metadata(game, username)
+        )
+        if vector is None:
+            skipped.append(game_id)
             continue
-    return pd.DataFrame(rows)
-
-
-def _phase_mistake_rate(game_moves_df: pd.DataFrame, phase: str) -> float | None:
-    """Input shape: game_moves_df (one game's move rows), phase str ('opening' |
-    'middlegame' | 'endgame').
-    Output shape: float in [0, 1], or None if the game never reached that phase.
-
-    Purpose: fraction of moves within a given game phase that were a blunder or
-    mistake — lets the report distinguish e.g. "blunders mostly in the endgame"
-    from "blunders mostly in the opening".
-    """
-    phase_df = game_moves_df[game_moves_df["phase"] == phase]
-    if phase_df.empty:
-        return None
-    return phase_df["quality_label"].isin(MISTAKE_LABELS).mean()
-
-
-def _missed_tactic_rate(game_moves_df: pd.DataFrame) -> float:
-    """Input shape: game_moves_df (one game's move rows, with 'motif' and 'quality_label').
-    Output shape: float in [0, 1].
-
-    Purpose: proxy for "missed tactical opportunities" — among positions where a
-    fork/pin/skewer motif was geometrically present for the mover, what fraction
-    were played as a blunder or mistake rather than capitalized on. Returns 0.0
-    (not None) when no motif-bearing positions occurred, since "no opportunities,
-    so none missed" is a meaningful zero rather than missing data.
-    """
-    motif_present = game_moves_df["motif"] != ""
-    if motif_present.sum() == 0:
-        return 0.0
-    missed = motif_present & game_moves_df["quality_label"].isin(MISTAKE_LABELS)
-    return missed.sum() / motif_present.sum()
+        rows.append(vector)
+    if skipped:
+        logger.info("Excluded %d game(s) (too short or not annotated): %s", len(skipped), skipped)
+    return pd.DataFrame(rows), skipped

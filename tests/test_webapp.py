@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from src.config import RAW_PGN_DIR
 from src.webapp.app import app
+from tests.helpers import requires_stockfish
 
 SMOKE_TEST_DEPTH = 8
 
@@ -21,7 +22,7 @@ def _client():
     return app.test_client()
 
 
-def _mock_chess_com_responses(pgn_text: str):
+def _mock_chess_com_responses(pgn_texts):
     archives_resp = MagicMock()
     archives_resp.status_code = 200
     archives_resp.ok = True
@@ -30,8 +31,16 @@ def _mock_chess_com_responses(pgn_text: str):
     month_resp = MagicMock()
     month_resp.status_code = 200
     month_resp.ok = True
-    month_resp.json.return_value = {"games": [{"pgn": pgn_text}]}
+    month_resp.json.return_value = {"games": [{"pgn": t, "time_class": "rapid", "rules": "chess",
+                                               "url": f"https://www.chess.com/game/live/{i}"}
+                                              for i, t in enumerate(pgn_texts)]}
     return [archives_resp, month_resp]
+
+
+def _synthetic_pgns(n):
+    text = (RAW_PGN_DIR / "synthetic_games.pgn").read_text()
+    return [g.strip() + "\n" for g in text.split("\n\n[Event")][:1] + [
+        "[Event" + g.strip() + "\n" for g in text.split("\n\n[Event")[1:n]]
 
 
 def test_index_page_loads():
@@ -71,26 +80,24 @@ def test_analyze_with_empty_profile_shows_clear_error():
     assert b"no public games available" in resp.data
 
 
-def test_analyze_with_real_username_renders_report_and_training_plan():
+@requires_stockfish
+def test_analyze_renders_report_training_plan_and_links():
     client = _client()
-    pgn_text = (RAW_PGN_DIR / "sample_short_game.pgn").read_text()
-    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(pgn_text)):
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(_synthetic_pgns(12))):
         with patch("src.webapp.app.DASHBOARD_DEPTH", SMOKE_TEST_DEPTH):
-            resp = client.post("/analyze", data={"username": "TestPlayer", "max_games": "5"})
-
+            resp = client.post("/analyze", data={"username": "TestPlayer", "max_games": "12", "time_class": "rapid"})
     assert resp.status_code == 200
     body = resp.data.decode("utf-8")
-    assert "Coaching Report" in body
-    assert "Training Plan" in body
-    assert "TestPlayer" in body
+    for text in ("Coaching Report", "Training Plan", "TestPlayer", "Per-Game Breakdown", "game number",
+                 "https://www.chess.com/game/live/", "Rapid only"):
+        assert text in body
+    assert "missed_tactic_rate" not in body and "blunder_rate" not in body  # no raw metric keys
 
 
+@requires_stockfish
 def test_analyze_reports_fewer_games_than_requested():
     client = _client()
-    pgn_text = (RAW_PGN_DIR / "sample_short_game.pgn").read_text()
-    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(pgn_text)):
+    with patch("src.ingestion.fetch_games.requests.get", side_effect=_mock_chess_com_responses(_synthetic_pgns(11))):
         with patch("src.webapp.app.DASHBOARD_DEPTH", SMOKE_TEST_DEPTH):
             resp = client.post("/analyze", data={"username": "TestPlayer", "max_games": "50"})
-
-    body = resp.data.decode("utf-8")
-    assert "fewer than 50 total" in body
+    assert "You asked for 50 games; this account only had 11 matching public games." in resp.data.decode("utf-8")
